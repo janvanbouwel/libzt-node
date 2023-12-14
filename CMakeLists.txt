@@ -327,6 +327,7 @@ set_target_properties(nodezt PROPERTIES PREFIX "" SUFFIX ".node")
 target_link_libraries(nodezt ${CMAKE_JS_LIB})
 
 target_link_libraries(nodezt 
+    ${CMAKE_THREAD_LIBS_INIT}
     ${ws2_32_LIBRARY_PATH}
     ${shlwapi_LIBRARY_PATH}
     ${iphlpapi_LIBRARY_PATH}    
