@@ -1,11 +1,11 @@
 
-name: Node.js Build and package
+name: Build and test all platforms
 
 on:
   push:
-  workflow_dispatch:
-  # release:
-  #   types: [created]
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
 
 env:
   NAPI_VERSION: 5
@@ -65,10 +65,10 @@ jobs:
         run: git submodule update --init --recursive
         working-directory: .
 
-      - name: Use Node.js 18.x
+      - name: Use Node.js 20.x
         uses: actions/setup-node@v3
         with:
-          node-version: 18.x
+          node-version: 20.x
 
       - name: rebuild
         if: ${{ !matrix.docker-arch }}
@@ -82,13 +82,6 @@ jobs:
             npm test
           fi
 
-          npx pkg-prebuilds-copy \
-            --baseDir build/Release \
-            --source $BINDING_NAME.node \
-            --name=$BINDING_NAME \
-            --strip  \
-            --napi_version=$NAPI_VERSION \
-            --arch=${{ matrix.arch }}
         env:
           CI: true
           npm_config_build_from_source: true
@@ -101,7 +94,6 @@ jobs:
         if: matrix.docker-arch
         with:
           image: ${{ matrix.docker-image }}
-          # shell: bash
           options: --platform=${{ matrix.docker-arch }} -v ${{ github.workspace }}:/work -e CI=1 -e npm_config_build_from_source=1 -e NAPI_VERSION -e BINDING_NAME
           run: |
             if command -v apt-get &> /dev/null
@@ -115,65 +107,9 @@ jobs:
               apk add cmake make g++ gcc
             fi
 
-            cd /work/src/bindings/nodejs
+            cd /work
 
             npm ci
             npm run build
             npm test
 
-            npx pkg-prebuilds-copy \
-              --baseDir build/Release \
-              --source $BINDING_NAME.node \
-              --name=$BINDING_NAME \
-              --strip \
-              --napi_version=$NAPI_VERSION \
-              --arch=${{ matrix.arch }} \
-              --libc=${{ matrix.libc }}
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v3
-        with:
-          name: ${{ runner.os }}-${{ matrix.arch }}-${{ matrix.libc }}-prebuilds
-          path: prebuilds
-          retention-days: 1
-
-  bundle:
-    name: Bundle prebuilds
-    needs: build-and-test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/download-artifact@v3
-        with:
-          path: tmp
-
-      - name: Display structure of downloaded files
-        run: |
-          mkdir prebuilds
-          mv tmp/*/* prebuilds/
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v3
-        with:
-          name: all-prebuilds
-          path: prebuilds
-          retention-days: 7
-
-  publish-npm:
-    needs: bundle
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-node@v3
-        with:
-          node-version: 18
-          registry-url: https://registry.npmjs.org/
-      - run: npm ci --ignore-scripts
-      - uses: actions/download-artifact@v3
-        with:
-          name: all-prebuilds
-          path: prebuilds
-      - run: npm run build
-      - run: npm test
-      - run: npm publish --dry-run --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.npm_token }}
