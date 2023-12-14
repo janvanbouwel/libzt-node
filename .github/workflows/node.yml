@@ -77,7 +77,7 @@ jobs:
           npm ci --ignore-scripts
           npm run compile -- --arch=${{ matrix.arch }}
 
-          if [ -n "${{ matrix.is-native }}" ]; then
+          if [ "${{ matrix.is-native }}" = "true" ]; then
             npm run build
             npm test
           fi
