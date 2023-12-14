@@ -1,0 +1,11 @@
+{
+    "compilerOptions": {
+        "outDir": "dist",
+        "declaration": true,
+        "noImplicitAny": true,
+        "strict": true
+    },
+    "include": [
+        "src"
+    ]
+}
