@@ -7,34 +7,7 @@ project(zt-node)
 find_package(Threads)
 
 
-
-
-
-# ------------------------------------------------------------------------------
-# |                             PLATFORM DETECTION                             |
-# ------------------------------------------------------------------------------
-
-# Apple
-if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-    set(BUILD_DARWIN TRUE)
-endif()
-
-# macOS
-if(BUILD_DARWIN AND NOT BUILD_IOS_FRAMEWORK)
-    set(BUILD_MACOS        TRUE)
-endif()
-
-if(${CMAKE_GENERATOR} STREQUAL "Xcode")
-    set(IN_XCODE TRUE)
-    set(XCODE_EMIT_EFFECTIVE_PLATFORM_NAME ON)
-endif()
-
-# Target names
-if(IN_XCODE)
-    set(XCODE_FRAMEWORK_NAME ${PROJECT_NAME})
-endif()
-
-# Windows
+# detect Windows
 if(WIN32)
     set(BUILD_WIN32 TRUE)
 endif()
@@ -63,7 +36,6 @@ set(LIBZT_SRC_DIR "${LIBZT_DIR}/src")
 if(UNIX)
     set(LWIP_PORT_DIR ${LIBZT_DIR}/ext/lwip-contrib/ports/unix/port)
 endif()
-
 if(BUILD_WIN)
     set(LWIP_PORT_DIR ${LIBZT_DIR}/ext/lwip-contrib/ports/win32)
 endif()
@@ -89,13 +61,6 @@ include_directories(${LIBZT_DIR}/ext/concurrentqueue)
 include_directories(${LWIP_SRC_DIR}/include)
 include_directories(${LWIP_PORT_DIR}/include)
 
-# ------------------------------------------------------------------------------
-# |                        TARGET AND VARIANT SELECTION                        |
-# ------------------------------------------------------------------------------
-
-# Defaults
-option(BUILD_STATIC_LIB         "Build static library"        FALSE)
-option(BUILD_SHARED_LIB         "Build shared libary"         FALSE)
 
 # ------------------------------------------------------------------------------
 # |                           DISABLE CENTRAL API                              |
@@ -268,8 +233,6 @@ list(REMOVE_ITEM lwipSrcGlob ${LWIP_SRC_DIR}/netif/slipif.c)
 # |                     OBJECT LIBRARIES (INTERMEDIATE)                        |
 # ------------------------------------------------------------------------------
 
-# PIC
-
 # zto_pic
 add_library(zto_pic ${ztcoreSrcGlob})
 set_target_properties(zto_pic PROPERTIES COMPILE_FLAGS "${ZT_FLAGS}"
@@ -309,24 +272,22 @@ set_target_properties(zt_pic PROPERTIES COMPILE_FLAGS "${ZT_FLAGS}"
     POSITION_INDEPENDENT_CODE ON)
 
 # ------------------------------------------------------------------------------
-# |                                 NODEJS LIBRARY                             |
+# |                                 NODEJS BINDING                             |
 # ------------------------------------------------------------------------------
 
 add_definitions(-DNAPI_VERSION=5)
 
 include_directories(${CMAKE_JS_INC})
 
-set(NODEJS_SRC_DIR "src/native")
+set(NODEJS_SRC_DIR "${PROJ_DIR}/src/native")
 set(NODEJS_SRC_FILES 
-    "${NODEJS_SRC_DIR}/binding.cc"       
-                    )
-
+    "${NODEJS_SRC_DIR}/binding.cc"       )
 
 add_library(nodezt SHARED ${NODEJS_SRC_FILES} ${CMAKE_JS_SRC})
 set_target_properties(nodezt PROPERTIES PREFIX "" SUFFIX ".node")
-target_link_libraries(nodezt ${CMAKE_JS_LIB})
 
 target_link_libraries(nodezt 
+    ${CMAKE_JS_LIB}
     ${CMAKE_THREAD_LIBS_INIT}
     ${ws2_32_LIBRARY_PATH}
     ${shlwapi_LIBRARY_PATH}
@@ -337,12 +298,10 @@ target_link_libraries(nodezt
     natpmp_pic
     miniupnpc_pic)
 
-# target_link_libraries(nodezt ${STATIC_LIB_NAME})
-
 if(MSVC AND CMAKE_JS_NODELIB_DEF AND CMAKE_JS_NODELIB_TARGET)
     # Generate node.lib
     execute_process(COMMAND ${CMAKE_AR} /def:${CMAKE_JS_NODELIB_DEF} /out:${CMAKE_JS_NODELIB_TARGET} ${CMAKE_STATIC_LINKER_FLAGS})
 endif()
 
 # Include N-API wrappers
-target_include_directories(nodezt PRIVATE "${NODEJS_DIR}/node_modules/node-addon-api")
+target_include_directories(nodezt PRIVATE "${PROJ_DIR}/node_modules/node-addon-api")
