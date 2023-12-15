@@ -46,7 +46,7 @@ export class Server extends EventEmitter {
   close() {
     if (!this.listening) return;
     this.listening = false;
-    this.internal.close(() => {
+    this.internal.close().then(() => {
       this.closed = true;
       if (this.connAmount === 0) this.emit("close");
     });

@@ -187,7 +187,7 @@ CLASS(Server)
 
     METHOD(listen);
     METHOD(address);
-    VOID_METHOD(close);
+    METHOD(close);
 
     tcp_accept_fn acceptCb;
 };
@@ -288,20 +288,19 @@ METHOD(Server::address)
     });
 }
 
-VOID_METHOD(Server::close)
+METHOD(Server::close)
 {
-    NB_ARGS(1);
-    auto cb = ARG_FUNC(0);
-    auto onClose = TSFN_ONCE(cb, "tcpServerClose");
+    NO_ARGS();
 
-    typed_tcpip_callback([=]() {
-        tcp_close(this->pcb);
-        this->pcb = nullptr;
+    return async_run(env, [&](DeferredPromise promise) {
+        typed_tcpip_callback(tsfn_once(env, "Server::close", [this, promise]() {
+            tcp_close(this->pcb);
+            this->pcb = nullptr;
 
-        this->onConnection.Release();
+            this->onConnection.Release();
 
-        onClose->BlockingCall();
-        onClose->Release();
+            return [promise](TSFN_ARGS) { promise->Resolve(UNDEFINED); };
+        }));
     });
 }
 

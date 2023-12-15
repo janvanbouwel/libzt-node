@@ -25,7 +25,7 @@ declare class Server {
   );
   listen(port: number, address: string): Promise<void>;
   address(): { port: number; address: string; family: "IPv6" | "IPv4" };
-  close(callback: () => void): void;
+  close(): Promise<void>;
 }
 
 declare class UDP {
