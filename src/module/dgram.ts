@@ -113,7 +113,7 @@ class Socket extends EventEmitter {
     this.checkClosed();
     this.closed = true;
     if (callback) this.on("close", callback);
-    this.internal.close(() => this.emit("close"));
+    this.internal.close().then(() => this.emit("close"));
   }
 
   connect(

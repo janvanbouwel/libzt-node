@@ -34,7 +34,7 @@ CLASS(Socket)
 
     METHOD(send);
     METHOD(bind);
-    VOID_METHOD(close);
+    METHOD(close);
 
     METHOD(address);
     METHOD(remoteAddress);
@@ -197,24 +197,31 @@ METHOD(Socket::bind)
     });
 }
 
-VOID_METHOD(Socket::close)
+METHOD(Socket::close)
 {
-    NB_ARGS(1);
-    auto callback = ARG_FUNC(0);
+    NO_ARGS();
 
-    if (pcb) {
-        auto onClose = TSFN_ONCE_WITH_FINALISE(callback, "udpOnClose", { this->onRecv.Abort(); });
+    return async_run(env, [&](DeferredPromise promise) {
+        if (pcb) {
+            auto old_pcb = pcb;
+            pcb = nullptr;
 
-        auto old_pcb = pcb;
-        typed_tcpip_callback([old_pcb, onClose]() {
-            udp_remove(old_pcb);
+            typed_tcpip_callback(tsfn_once(env, "UDP::Socket::close", [old_pcb, this, promise]() {
+                LWIP_ASSERT("pcb was null", old_pcb != nullptr);
+                udp_remove(old_pcb);
 
-            onClose->BlockingCall();
-            onClose->Release();
-        });
-
-        pcb = nullptr;
-    }
+                return [this, promise](TSFN_ARGS) {
+                    onRecv.Abort();
+                    promise->Resolve(UNDEFINED);
+                };
+            }));
+            pcb = nullptr;
+        }
+        else {
+            // TODO handle this differently?
+            promise->Resolve(UNDEFINED);
+        }
+    });
 }
 
 METHOD(Socket::address)
