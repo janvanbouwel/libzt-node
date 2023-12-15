@@ -19,7 +19,8 @@ CLASS(Socket)
     static Napi::FunctionReference* constructor;
 
     CLASS_INIT_DECL();
-    CONSTRUCTOR_DECL(Socket);
+
+    CONSTRUCTOR(Socket) {}; 
 
     void set_pcb(tcp_pcb * pcb)
     {
@@ -54,10 +55,6 @@ CLASS_INIT_IMPL(Socket)
 
     EXPORT(Socket, SocketClass);
     return exports;
-}
-
-CONSTRUCTOR_IMPL(Socket)
-{
 }
 
 VOID_METHOD(Socket::init)
@@ -210,7 +207,7 @@ CLASS_INIT_IMPL(Server)
     return exports;
 }
 
-CONSTRUCTOR_IMPL(Server)
+Server::CONSTRUCTOR(Server)
 {
     NB_ARGS(1);
     auto onConnection = ARG_FUNC(0);

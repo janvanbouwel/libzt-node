@@ -115,7 +115,7 @@ void tsfnOnRecv(TSFN_ARGS, nullptr_t* ctx, recv_data* rd)
  * @param recvCallback { (data: Buffer, addr: string, port: number)=>void }
  * called when receiving data
  */
-CONSTRUCTOR_IMPL(Socket)
+Socket::CONSTRUCTOR(Socket)
 {
     NB_ARGS(2);
     bool ipv6 = ARG_BOOLEAN(0);

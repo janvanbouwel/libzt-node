@@ -25,9 +25,9 @@
 
 #define CLASS(NAME) class NAME : public Napi::ObjectWrap<NAME>
 
-#define CONSTRUCTOR_DECL(NAME) NAME(CALLBACKINFO)
+#define CONSTRUCTOR(NAME) NAME(CALLBACKINFO) : Napi::ObjectWrap<NAME>(info)
 
-#define CONSTRUCTOR_IMPL(NAME) NAME::NAME(CALLBACKINFO) : Napi::ObjectWrap<NAME>(info)
+#define CONSTRUCTOR_DECL(NAME) NAME(CALLBACKINFO)
 
 #define CLASS_INIT_DECL() static Napi::Object Init(Napi::Env env, Napi::Object exports)
 
