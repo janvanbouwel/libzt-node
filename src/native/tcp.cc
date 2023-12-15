@@ -1,7 +1,7 @@
 #include "lwip/tcp.h"
 
 #include "ZeroTierSockets.h"
-#include "lwip-macros.h"
+#include "lwip-util.h"
 #include "lwip/tcpip.h"
 #include "macros.h"
 
@@ -31,18 +31,18 @@ CLASS(Socket)
 
     Napi::ThreadSafeFunction emit;
 
-    METHOD(connect);
-    METHOD(init);
+    VOID_METHOD(connect);
+    VOID_METHOD(init);
     METHOD(send);
-    METHOD(ack);
-    METHOD(shutdown_wr);
+    VOID_METHOD(ack);
+    VOID_METHOD(shutdown_wr);
 };
 
-Napi::FunctionReference* Socket::constructor = new Napi::FunctionReference;
+Napi::FunctionReference* Socket::constructor = nullptr;
 
 CLASS_INIT_IMPL(Socket)
 {
-    auto func = CLASS_DEFINE(
+    auto SocketClass = CLASS_DEFINE(
         Socket,
         { CLASS_INSTANCE_METHOD(Socket, init),
           CLASS_INSTANCE_METHOD(Socket, connect),
@@ -50,18 +50,17 @@ CLASS_INIT_IMPL(Socket)
           CLASS_INSTANCE_METHOD(Socket, ack),
           CLASS_INSTANCE_METHOD(Socket, shutdown_wr) });
 
-    *constructor = Napi::Persistent(func);
+    CLASS_SET_CONSTRUCTOR(SocketClass);
 
-    exports["Socket"] = func;
+    EXPORT(Socket, SocketClass);
     return exports;
 }
 
 CONSTRUCTOR_IMPL(Socket)
 {
-    NO_ARGS();
 }
 
-CLASS_METHOD_IMPL(Socket, init)
+VOID_METHOD(Socket::init)
 {
     NB_ARGS(1);
     auto emit = ARG_FUNC(0);
@@ -81,7 +80,7 @@ CLASS_METHOD_IMPL(Socket, init)
             }
             thiz->emit.BlockingCall([=](TSFN_ARGS) {
                 if (! p) {
-                    jsCallback.Call({ STRING("data"), VOID });
+                    jsCallback.Call({ STRING("data"), UNDEFINED });
                 }
                 else {
                     auto data = Napi::Buffer<char>::NewOrCopy(
@@ -117,11 +116,8 @@ CLASS_METHOD_IMPL(Socket, init)
             thiz->emit.Release();
         });
     });
-
-    return VOID;
 }
-
-CLASS_METHOD_IMPL(Socket, connect)
+VOID_METHOD(Socket::connect)
 {
     NB_ARGS(2);
     int port = ARG_NUMBER(0);
@@ -137,55 +133,41 @@ CLASS_METHOD_IMPL(Socket, connect)
             return ERR_OK;
         });
     });
-
-    return VOID;
 }
 
-CLASS_METHOD_IMPL(Socket, send)
+METHOD(Socket::send)
 {
-    NB_ARGS(2);
+    NB_ARGS(1);
     auto data = ARG_UINT8ARRAY(0);
-    auto callback = ARG_FUNC(1);
-
     auto dataRef = NEW_REF_UINT8ARRAY(data);
-    auto sendCallback = TSFN_ONCE(callback, "sendCallback", {
-        // make sure that data is present in the callback
-        delete dataRef;
-    });
 
     auto bufLength = data.ByteLength();
     auto buffer = data.Data();
 
-    typed_tcpip_callback([=]() {
+    return lwip_thread_promise(env, [=]() {
         auto sndbuf = tcp_sndbuf(this->pcb);
 
         u16_t len = (sndbuf < bufLength) ? sndbuf : bufLength;
         tcp_write(this->pcb, buffer, len, TCP_WRITE_FLAG_COPY);
 
-        sendCallback->BlockingCall([=](TSFN_ARGS) { jsCallback.Call({ NUMBER(len) }); });
-        sendCallback->Release();
+        return [=](Napi::Env env, Napi::Promise::Deferred* promise) -> void {
+            promise->Resolve(NUMBER(len));
+            delete dataRef;
+        };
     });
-
-    return VOID;
 }
 
-CLASS_METHOD_IMPL(Socket, ack)
+VOID_METHOD(Socket::ack)
 {
     NB_ARGS(1);
     int length = ARG_NUMBER(0);
 
     typed_tcpip_callback([=]() { tcp_recved(this->pcb, length); });
-
-    return VOID;
 }
 
-CLASS_METHOD_IMPL(Socket, shutdown_wr)
+VOID_METHOD(Socket::shutdown_wr)
 {
-    NO_ARGS();
-
     typed_tcpip_callback([=]() { tcp_shutdown(this->pcb, 0, 1); });
-
-    return VOID;
 }
 
 /* #########################################
@@ -205,9 +187,9 @@ CLASS(Server)
 
     Napi::ThreadSafeFunction onConnection;
 
-    METHOD(listen);
+    VOID_METHOD(listen);
     METHOD(address);
-    METHOD(close);
+    VOID_METHOD(close);
 
     tcp_accept_fn acceptCb;
 };
@@ -216,15 +198,15 @@ Napi::FunctionReference* Server::constructor = new Napi::FunctionReference;
 
 CLASS_INIT_IMPL(Server)
 {
-    auto func = CLASS_DEFINE(
+    auto ServerClass = CLASS_DEFINE(
         Server,
         { CLASS_INSTANCE_METHOD(Server, listen),
           CLASS_INSTANCE_METHOD(Server, address),
           CLASS_INSTANCE_METHOD(Server, close) });
 
-    *Server::constructor = Napi::Persistent(func);
+    *constructor = Napi::Persistent(ServerClass);
 
-    exports["Server"] = func;
+    EXPORT(Server, ServerClass);
     return exports;
 }
 
@@ -249,7 +231,7 @@ CONSTRUCTOR_IMPL(Server)
             auto socket = Socket::constructor->New({});
             Socket::Unwrap(socket)->set_pcb(new_pcb);
 
-            jsCallback.Call({ VOID, socket });
+            jsCallback.Call({ UNDEFINED, socket });
 
             // event handlers set in callback so now accept connection
             typed_tcpip_callback([=]() { tcp_backlog_accepted(new_pcb); });
@@ -264,14 +246,14 @@ CONSTRUCTOR_IMPL(Server)
     });
 }
 
-CLASS_METHOD_IMPL(Server, listen)
+VOID_METHOD(Server::listen)
 {
     NB_ARGS(3);
     int port = ARG_NUMBER(0);
     std::string address = ARG_STRING(1);
     auto callback = ARG_FUNC(2);
 
-    auto onListening = TSFN_ONCE(callback, "onListening", );
+    auto onListening = TSFN_ONCE(callback, "onListening");
 
     ip_addr_t ip_addr;
     if (address.size() == 0)
@@ -293,11 +275,9 @@ CLASS_METHOD_IMPL(Server, listen)
         onListening->BlockingCall([](TSFN_ARGS) { jsCallback.Call({}); });
         onListening->Release();
     });
-
-    return VOID;
 }
 
-CLASS_METHOD_IMPL(Server, address)
+METHOD(Server::address)
 {
     NO_ARGS();
 
@@ -311,11 +291,11 @@ CLASS_METHOD_IMPL(Server, address)
     });
 }
 
-CLASS_METHOD_IMPL(Server, close)
+VOID_METHOD(Server::close)
 {
     NB_ARGS(1);
     auto cb = ARG_FUNC(0);
-    auto onClose = TSFN_ONCE(cb, "tcpServerClose", {});
+    auto onClose = TSFN_ONCE(cb, "tcpServerClose");
 
     typed_tcpip_callback([=]() {
         tcp_close(this->pcb);
@@ -326,8 +306,6 @@ CLASS_METHOD_IMPL(Server, close)
         onClose->BlockingCall();
         onClose->Release();
     });
-
-    return VOID;
 }
 
 }   // namespace TCP

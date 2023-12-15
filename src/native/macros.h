@@ -13,7 +13,9 @@
     NODE_API_MODULE(NAME, Init_Wrap);                                                                                  \
     void Init(Napi::Env env, Napi::Object exports)
 
-#define EXPORT(F) exports[#F] = Napi::Function::New(env, F)
+#define EXPORT(NAME, VALUE) exports[#NAME] = VALUE
+
+#define EXPORT_FUNCTION(F) EXPORT(F, FUNCTION(F))
 
 // CLASS
 
@@ -35,17 +37,19 @@
 
 #define CLASS_INSTANCE_METHOD(CLASS, NAME) InstanceMethod<&CLASS::NAME>(#NAME, napi_default)
 
+#define CLASS_SET_CONSTRUCTOR(CLASS)                                                                                   \
+    [&]() {                                                                                                            \
+        constructor = new Napi::FunctionReference;                                                                     \
+        *constructor = Napi::Persistent(CLASS);                                                                        \
+    }()
+
 // METHOD
 
 #define CALLBACKINFO const Napi::CallbackInfo& info
 
+#define VOID_METHOD(NAME) void NAME(CALLBACKINFO)
+
 #define METHOD(NAME) Napi::Value NAME(CALLBACKINFO)
-
-#define CLASS_METHOD_IMPL(CLASS, NAME) METHOD(CLASS::NAME)
-
-#define HANDLE_SCOPE()                                                                                                 \
-    Napi::HandleScope scope(Env());                                                                                    \
-    Napi::Env env = Env();
 
 // ENVIRONMENT AND ARGUMENTS
 
@@ -71,7 +75,7 @@
 
 // WRAP DATA
 
-#define VOID env.Undefined()
+#define UNDEFINED env.Undefined()
 
 #define BOOL(VALUE) Napi::Boolean::New(env, VALUE)
 
@@ -88,6 +92,8 @@
         FIELDS                                                                                                         \
         return __ret_obj;                                                                                              \
     }()
+
+#define FUNCTION(F) Napi::Function::New(env, F, #F)
 
 // Reference
 
@@ -106,10 +112,28 @@
 /**
  * returns pointer to a new threadafe function with the specified callback
  * Memory is automatically freed when the tsfn finalises
+ */
+#define TSFN_ONCE(CALLBACK, NAME) TSFN_ONCE_WITH_FINALISE(CALLBACK, NAME, )
+
+/**
+ * returns pointer to a new threadafe function with the specified callback
+ * Memory is automatically freed when the tsfn finalises
+ *
+ * Third argument is napi reference that should be deleted when tsfn finalises
+ */
+#define TSFN_ONCE_WITH_REF(CALLBACK, NAME, REF)                                                                        \
+    [&]() {                                                                                                            \
+        auto __data_ref = REF;                                                                                         \
+        return TSFN_ONCE_WITH_FINALISE(CALLBACK, NAME, { delete __data_ref; });                                        \
+    }()
+
+/**
+ * returns pointer to a new threadafe function with the specified callback
+ * Memory is automatically freed when the tsfn finalises
  *
  * Last argument can contain extra finalising code (copy capture)
  */
-#define TSFN_ONCE(CALLBACK, NAME, FINALISE)                                                                            \
+#define TSFN_ONCE_WITH_FINALISE(CALLBACK, NAME, FINALISE)                                                              \
     [&]() {                                                                                                            \
         auto __tsfn = new Napi::ThreadSafeFunction;                                                                    \
         *__tsfn = Napi::ThreadSafeFunction::New(env, CALLBACK, NAME, 0, 1, [=](Napi::Env) {                            \

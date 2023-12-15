@@ -1,7 +1,7 @@
 #include "lwip/udp.h"
 
 #include "ZeroTierSockets.h"
-#include "lwip-macros.h"
+#include "lwip-util.h"
 #include "lwip/tcpip.h"
 #include "macros.h"
 
@@ -32,34 +32,32 @@ CLASS(Socket)
   private:
     udp_pcb* pcb;
 
-    METHOD(send);
-    METHOD(bind);
-    METHOD(close);
+    VOID_METHOD(send);
+    VOID_METHOD(bind);
+    VOID_METHOD(close);
 
     METHOD(address);
     METHOD(remoteAddress);
 
-    METHOD(connect);
-    METHOD(disconnect);
-    METHOD(ref)
+    VOID_METHOD(connect);
+    VOID_METHOD(disconnect);
+    VOID_METHOD(ref)
     {
         NO_ARGS();
         onRecv.Ref(env);
-        return VOID;
     }
-    METHOD(unref)
+    VOID_METHOD(unref)
     {
         NO_ARGS();
         onRecv.Unref(env);
-        return VOID;
     }
 };
 
-Napi::FunctionReference* Socket::constructor = new Napi::FunctionReference;
+Napi::FunctionReference* Socket::constructor = nullptr;
 
 CLASS_INIT_IMPL(Socket)
 {
-    auto func = CLASS_DEFINE(
+    auto SocketClass = CLASS_DEFINE(
         Socket,
         { CLASS_INSTANCE_METHOD(Socket, send),
           CLASS_INSTANCE_METHOD(Socket, bind),
@@ -71,9 +69,9 @@ CLASS_INIT_IMPL(Socket)
           CLASS_INSTANCE_METHOD(Socket, ref),
           CLASS_INSTANCE_METHOD(Socket, unref) });
 
-    *constructor = Napi::Persistent(func);
+    CLASS_SET_CONSTRUCTOR(SocketClass);
 
-    exports["UDP"] = func;
+    EXPORT(UDP, SocketClass);
     return exports;
 }
 
@@ -81,7 +79,7 @@ void lwip_recv_cb(void* arg, struct udp_pcb* pcb, struct pbuf* p, const ip_addr_
 {
     auto thiz = reinterpret_cast<Socket*>(arg);
 
-    recv_data* rd = new recv_data { };
+    recv_data* rd = new recv_data {};
     rd->p = p;
     rd->port = port;
     ipaddr_ntoa_r(addr, rd->addr, ZTS_IP_MAX_STR_LEN);
@@ -114,7 +112,8 @@ void tsfnOnRecv(TSFN_ARGS, nullptr_t* ctx, recv_data* rd)
 
 /**
  * @param ipv6 { bool } sets the type of the udp socket
- * @param recvCallback { (data: Buffer, addr: string, port: number)=>void } called when receiving data
+ * @param recvCallback { (data: Buffer, addr: string, port: number)=>void }
+ * called when receiving data
  */
 CONSTRUCTOR_IMPL(Socket)
 {
@@ -131,7 +130,7 @@ CONSTRUCTOR_IMPL(Socket)
     });
 }
 
-CLASS_METHOD_IMPL(Socket, send)
+VOID_METHOD(Socket::send)
 {
     NB_ARGS(4);
     auto data = ARG_UINT8ARRAY(0);
@@ -139,11 +138,8 @@ CLASS_METHOD_IMPL(Socket, send)
     int port = ARG_NUMBER(2);
     auto callback = ARG_FUNC(3);
 
-    auto dataRef = NEW_REF_UINT8ARRAY(data);
-    auto onSent = TSFN_ONCE(
-        callback,
-        "udpOnSent",
-        /* unref data when sending complete */ { delete dataRef; });
+    auto onSent = TSFN_ONCE_WITH_REF(callback, "udpOnSent", NEW_REF_UINT8ARRAY(data));
+
     auto len = data.ByteLength();
     auto buffer = data.Data();
 
@@ -167,18 +163,16 @@ CLASS_METHOD_IMPL(Socket, send)
 
         pbuf_free(p);
     });
-
-    return VOID;
 }
 
-CLASS_METHOD_IMPL(Socket, bind)
+VOID_METHOD(Socket::bind)
 {
     NB_ARGS(3);
     std::string addr = ARG_STRING(0);
     int port = ARG_NUMBER(1);
     auto callback = ARG_FUNC(2);
 
-    auto bindCb = TSFN_ONCE(callback, "udpBindCb", );
+    auto bindCb = TSFN_ONCE(callback, "udpBindCb");
     ip_addr_t ip_addr;
 
     if (addr.size() == 0)
@@ -197,17 +191,15 @@ CLASS_METHOD_IMPL(Socket, bind)
         });
         bindCb->Release();
     });
-
-    return VOID;
 }
 
-CLASS_METHOD_IMPL(Socket, close)
+VOID_METHOD(Socket::close)
 {
     NB_ARGS(1);
     auto callback = ARG_FUNC(0);
 
     if (pcb) {
-        auto onClose = TSFN_ONCE(callback, "udpOnClose", { this->onRecv.Abort(); });
+        auto onClose = TSFN_ONCE_WITH_FINALISE(callback, "udpOnClose", { this->onRecv.Abort(); });
 
         auto old_pcb = pcb;
         typed_tcpip_callback([old_pcb, onClose]() {
@@ -219,11 +211,9 @@ CLASS_METHOD_IMPL(Socket, close)
 
         pcb = nullptr;
     }
-
-    return VOID;
 }
 
-CLASS_METHOD_IMPL(Socket, address)
+METHOD(Socket::address)
 {
     NO_ARGS();
 
@@ -237,7 +227,7 @@ CLASS_METHOD_IMPL(Socket, address)
     });
 }
 
-CLASS_METHOD_IMPL(Socket, remoteAddress)
+METHOD(Socket::remoteAddress)
 {
     NO_ARGS();
 
@@ -251,7 +241,7 @@ CLASS_METHOD_IMPL(Socket, remoteAddress)
     });
 }
 
-CLASS_METHOD_IMPL(Socket, connect)
+VOID_METHOD(Socket::connect)
 {
     NB_ARGS(3);
 
@@ -259,7 +249,7 @@ CLASS_METHOD_IMPL(Socket, connect)
     int port = ARG_NUMBER(1);
     auto callback = ARG_FUNC(2);
 
-    auto onConnect = TSFN_ONCE(callback, "udpConnectCb", );
+    auto onConnect = TSFN_ONCE(callback, "udpConnectCb");
     ip_addr_t addr;
     ipaddr_aton(address.c_str(), &addr);
 
@@ -274,17 +264,11 @@ CLASS_METHOD_IMPL(Socket, connect)
         });
         onConnect->Release();
     });
-
-    return VOID;
 }
 
-CLASS_METHOD_IMPL(Socket, disconnect)
+VOID_METHOD(Socket::disconnect)
 {
-    NO_ARGS();
-
     typed_tcpip_callback([=]() { udp_disconnect(pcb); });
-
-    return VOID;
 }
 
 }   // namespace UDP
