@@ -39,7 +39,7 @@ CLASS(Socket)
     METHOD(address);
     METHOD(remoteAddress);
 
-    VOID_METHOD(connect);
+    METHOD(connect);
     VOID_METHOD(disconnect);
     VOID_METHOD(ref)
     {
@@ -145,7 +145,7 @@ METHOD(Socket::send)
         typed_tcpip_callback(tsfn_once(
             env,
             "UDP::Socket::send",
-            [*this,
+            [this,
              port,
              ip_addr,
              len = data.ByteLength(),
@@ -184,10 +184,10 @@ METHOD(Socket::bind)
         ipaddr_aton(addr.c_str(), &ip_addr);
 
     return async_run(env, [&](DeferredPromise promise) {
-        typed_tcpip_callback(tsfn_once(env, "UDP::Socket::bind", [*this, ip_addr, port, promise]() {
+        typed_tcpip_callback(tsfn_once(env, "UDP::Socket::bind", [this, ip_addr, port, promise]() {
             auto err = udp_bind(pcb, &ip_addr, port);
 
-            return [=](TSFN_ARGS) {
+            return [err, promise](TSFN_ARGS) {
                 if (err != ERR_OK)
                     promise->Reject(MAKE_ERROR("Bind error", { ERR_FIELD("code", NUMBER(err)); }).Value());
                 else
@@ -245,28 +245,27 @@ METHOD(Socket::remoteAddress)
     });
 }
 
-VOID_METHOD(Socket::connect)
+METHOD(Socket::connect)
 {
-    NB_ARGS(3);
+    NB_ARGS(2);
 
     std::string address = ARG_STRING(0);
     int port = ARG_NUMBER(1);
-    auto callback = ARG_FUNC(2);
 
-    auto onConnect = TSFN_ONCE(callback, "udpConnectCb");
     ip_addr_t addr;
     ipaddr_aton(address.c_str(), &addr);
 
-    typed_tcpip_callback([=]() {
-        auto err = udp_connect(pcb, &addr, port);
+    return async_run(env, [&](DeferredPromise promise) {
+        typed_tcpip_callback(tsfn_once(env, "UDP::Socket::connect", [this, addr, port, promise]() {
+            auto err = udp_connect(pcb, &addr, port);
 
-        onConnect->BlockingCall([err](TSFN_ARGS) {
-            if (err != ERR_OK)
-                jsCallback.Call({ MAKE_ERROR("connect error", { ERR_FIELD("code", NUMBER(err)); }).Value() });
-            else
-                jsCallback.Call({});
-        });
-        onConnect->Release();
+            return [err, promise](TSFN_ARGS) {
+                if (err != ERR_OK)
+                    promise->Reject(MAKE_ERROR("Connect error", { ERR_FIELD("code", NUMBER(err)); }).Value());
+                else
+                    promise->Resolve(UNDEFINED);
+            };
+        }));
     });
 }
 

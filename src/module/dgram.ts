@@ -125,13 +125,14 @@ class Socket extends EventEmitter {
     if (!port) throw Error("Port must be specified");
     if (!address) address = this.ipv6 ? "::1" : "127.0.0.1";
 
-    this.internal.connect(address, port, (err?: NativeError) => {
-      if (err) this.handleError(callback)(err);
-      else {
+    this.internal
+      .connect(address, port)
+      .then(() => {
+        // if connect fails, shouldn't reuse callback for later try, so only add as listener here
         if (callback) this.once("connect", callback);
         this.emit("connect");
-      }
-    });
+      })
+      .catch((reason) => this.handleError(callback)(reason));
   }
 
   disconnect() {

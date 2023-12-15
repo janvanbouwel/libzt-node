@@ -41,11 +41,7 @@ declare class UDP {
   address(): { port: number; address: string; family: "udp6" | "udp4" };
   remoteAddress(): { port: number; address: string; family: "udp6" | "udp4" };
 
-  connect(
-    addr: string,
-    port: number,
-    callback?: (error?: NativeError) => void,
-  ): void;
+  connect(addr: string, port: number): Promise<void>;
   disconnect(): void;
 
   ref(): void;

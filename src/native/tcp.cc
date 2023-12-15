@@ -141,7 +141,7 @@ METHOD(Socket::send)
         typed_tcpip_callback(tsfn_once(
             env,
             "Socket::send",
-            [*this, bufLength = data.ByteLength(), buffer = data.Data(), dataRef = ref_uint8array(data), promise]() {
+            [this, bufLength = data.ByteLength(), buffer = data.Data(), dataRef = ref_uint8array(data), promise]() {
                 auto sndbuf = tcp_sndbuf(this->pcb);
 
                 u16_t len = (sndbuf < bufLength) ? sndbuf : bufLength;
