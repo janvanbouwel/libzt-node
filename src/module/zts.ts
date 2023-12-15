@@ -35,11 +35,7 @@ declare class UDP {
   );
 
   send(data: Uint8Array, addr: string, port: number): Promise<void>;
-  bind(
-    addr: string,
-    port: number,
-    callback: (error?: NativeError) => void,
-  ): void;
+  bind(addr: string, port: number): Promise<void>;
   close(callback: () => void): void;
 
   address(): { port: number; address: string; family: "udp6" | "udp4" };

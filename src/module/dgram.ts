@@ -80,10 +80,10 @@ class Socket extends EventEmitter {
 
     if (callback) this.once("listening", () => callback());
 
-    this.internal.bind(address, port, (err) => {
-      if (err) this.emit("error", err);
-      else this.emit("listening");
-    });
+    this.internal
+      .bind(address, port)
+      .then(() => this.emit("listening"))
+      .catch((reason) => this.handleError()(reason));
   }
 
   send(

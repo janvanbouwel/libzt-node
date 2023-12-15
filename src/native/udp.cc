@@ -33,7 +33,7 @@ CLASS(Socket)
     udp_pcb* pcb;
 
     METHOD(send);
-    VOID_METHOD(bind);
+    METHOD(bind);
     VOID_METHOD(close);
 
     METHOD(address);
@@ -170,14 +170,12 @@ METHOD(Socket::send)
     });
 }
 
-VOID_METHOD(Socket::bind)
+METHOD(Socket::bind)
 {
-    NB_ARGS(3);
+    NB_ARGS(2);
     std::string addr = ARG_STRING(0);
     int port = ARG_NUMBER(1);
-    auto callback = ARG_FUNC(2);
 
-    auto bindCb = TSFN_ONCE(callback, "udpBindCb");
     ip_addr_t ip_addr;
 
     if (addr.size() == 0)
@@ -185,16 +183,17 @@ VOID_METHOD(Socket::bind)
     else
         ipaddr_aton(addr.c_str(), &ip_addr);
 
-    typed_tcpip_callback([=]() {
-        auto err = udp_bind(pcb, &ip_addr, port);
+    return async_run(env, [&](DeferredPromise promise) {
+        typed_tcpip_callback(tsfn_once(env, "UDP::Socket::bind", [*this, ip_addr, port, promise]() {
+            auto err = udp_bind(pcb, &ip_addr, port);
 
-        bindCb->BlockingCall([err](TSFN_ARGS) {
-            if (err != ERR_OK)
-                jsCallback.Call({ MAKE_ERROR("Bind error", { ERR_FIELD("code", NUMBER(err)); }).Value() });
-            else
-                jsCallback.Call({});
-        });
-        bindCb->Release();
+            return [=](TSFN_ARGS) {
+                if (err != ERR_OK)
+                    promise->Reject(MAKE_ERROR("Bind error", { ERR_FIELD("code", NUMBER(err)); }).Value());
+                else
+                    promise->Resolve(UNDEFINED);
+            };
+        }));
     });
 }
 
