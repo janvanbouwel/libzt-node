@@ -32,7 +32,7 @@ CLASS(Socket)
   private:
     udp_pcb* pcb;
 
-    VOID_METHOD(send);
+    METHOD(send);
     VOID_METHOD(bind);
     VOID_METHOD(close);
 
@@ -130,38 +130,43 @@ Socket::CONSTRUCTOR(Socket)
     });
 }
 
-VOID_METHOD(Socket::send)
+METHOD(Socket::send)
 {
-    NB_ARGS(4);
+    NB_ARGS(3);
     auto data = ARG_UINT8ARRAY(0);
     std::string addr = ARG_STRING(1);
     int port = ARG_NUMBER(2);
-    auto callback = ARG_FUNC(3);
-
-    auto onSent = TSFN_ONCE_WITH_REF(callback, "udpOnSent", NEW_REF_UINT8ARRAY(data));
-
-    auto len = data.ByteLength();
-    auto buffer = data.Data();
 
     ip_addr_t ip_addr;
     if (port)
         ipaddr_aton(addr.c_str(), &ip_addr);
 
-    typed_tcpip_callback([this, onSent, port, len, buffer, ip_addr]() {
-        struct pbuf* p = pbuf_alloc(PBUF_TRANSPORT, len, PBUF_REF);
-        p->payload = buffer;
+    return async_run(env, [&](DeferredPromise promise) {
+        typed_tcpip_callback(tsfn_once(
+            env,
+            "UDP::Socket::send",
+            [*this,
+             port,
+             ip_addr,
+             len = data.ByteLength(),
+             buffer = data.Data(),
+             dataRef = ref_uint8array(data),
+             promise]() {
+                struct pbuf* p = pbuf_alloc(PBUF_TRANSPORT, len, PBUF_REF);
+                p->payload = buffer;
 
-        auto err = port ? udp_sendto(this->pcb, p, &ip_addr, port) : udp_send(this->pcb, p);
+                auto err = port ? udp_sendto(this->pcb, p, &ip_addr, port) : udp_send(this->pcb, p);
 
-        onSent->BlockingCall([err](TSFN_ARGS) {
-            if (err != ERR_OK)
-                jsCallback.Call({ MAKE_ERROR("send error", { ERR_FIELD("code", NUMBER(err)); }).Value() });
-            else
-                jsCallback.Call({});
-        });
-        onSent->Release();
+                pbuf_free(p);
 
-        pbuf_free(p);
+                return [err, dataRef, promise](TSFN_ARGS) {
+                    dataRef->Reset();
+                    if (err != ERR_OK)
+                        promise->Reject(MAKE_ERROR("send error", { ERR_FIELD("code", NUMBER(err)); }).Value());
+                    else
+                        promise->Resolve(UNDEFINED);
+                };
+            }));
     });
 }
 

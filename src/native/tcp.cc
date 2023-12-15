@@ -20,7 +20,7 @@ CLASS(Socket)
 
     CLASS_INIT_DECL();
 
-    CONSTRUCTOR(Socket) {}; 
+    CONSTRUCTOR(Socket) {};
 
     void set_pcb(tcp_pcb * pcb)
     {
@@ -136,21 +136,22 @@ METHOD(Socket::send)
 {
     NB_ARGS(1);
     auto data = ARG_UINT8ARRAY(0);
-    auto dataRef = NEW_REF_UINT8ARRAY(data);
 
-    auto bufLength = data.ByteLength();
-    auto buffer = data.Data();
+    return async_run(env, [&](auto promise) {
+        typed_tcpip_callback(tsfn_once(
+            env,
+            "Socket::send",
+            [*this, bufLength = data.ByteLength(), buffer = data.Data(), dataRef = ref_uint8array(data), promise]() {
+                auto sndbuf = tcp_sndbuf(this->pcb);
 
-    return lwip_thread_promise(env, [=]() {
-        auto sndbuf = tcp_sndbuf(this->pcb);
+                u16_t len = (sndbuf < bufLength) ? sndbuf : bufLength;
+                tcp_write(this->pcb, buffer, len, TCP_WRITE_FLAG_COPY);
 
-        u16_t len = (sndbuf < bufLength) ? sndbuf : bufLength;
-        tcp_write(this->pcb, buffer, len, TCP_WRITE_FLAG_COPY);
-
-        return [=](Napi::Env env, Napi::Promise::Deferred* promise) -> void {
-            promise->Resolve(NUMBER(len));
-            delete dataRef;
-        };
+                return [len, dataRef, promise](auto env, auto) -> void {
+                    dataRef->Reset();
+                    promise->Resolve(NUMBER(len));
+                };
+            }));
     });
 }
 

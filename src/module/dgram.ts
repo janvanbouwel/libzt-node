@@ -100,14 +100,13 @@ class Socket extends EventEmitter {
     }
     if (!address) address = this.ipv6 ? "::1" : "127.0.0.1";
 
-    const cb = this.bound
-      ? this.handleError(callback)
-      : (err?: NativeError) => {
-          if (!err) this.emit("listening");
-
-          this.handleError(callback)(err);
-        };
-    this.internal.send(msg, address, port, cb);
+    this.internal
+      .send(msg, address, port)
+      .then(() => {
+        if (!this.bound) this.emit("listening");
+        this.handleError(callback)();
+      })
+      .catch((reason) => this.handleError(callback)(reason));
   }
 
   close(callback?: () => void) {

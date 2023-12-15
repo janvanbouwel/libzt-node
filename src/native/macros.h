@@ -1,6 +1,10 @@
 #ifndef NAPI_MACROS
 #define NAPI_MACROS
 
+#include "napi.h"
+
+#include <functional>
+
 // INITIALISATION
 
 #define INIT_ADDON(NAME)                                                                                               \
@@ -100,12 +104,12 @@
 /**
  * Returns pointer to new reference. Has to be manually deleted!
  */
-#define NEW_REF_UINT8ARRAY(ARRAY)                                                                                      \
-    [&]() {                                                                                                            \
-        auto __ref = new Napi::Reference<Napi::Uint8Array>;                                                            \
-        *__ref = Napi::Persistent(ARRAY);                                                                              \
-        return __ref;                                                                                                  \
-    }()
+std::shared_ptr<Napi::Reference<Napi::Uint8Array> > ref_uint8array(Napi::Uint8Array array)
+{
+    auto ref = new Napi::Reference<Napi::Uint8Array>;
+    *ref = Napi::Persistent(array);
+    return std::shared_ptr<Napi::Reference<Napi::Uint8Array> >(ref);
+}
 
 // Threadsafe
 
@@ -144,6 +148,43 @@
     }()
 
 #define TSFN_ARGS Napi::Env env, Napi::Function jsCallback
+
+typedef std::shared_ptr<Napi::Promise::Deferred> DeferredPromise;
+
+DeferredPromise create_promise(Napi::Env env)
+{
+    return std::make_shared<Napi::Promise::Deferred>(env);
+}
+
+Napi::Promise async_run(Napi::Env env, std::function<void(DeferredPromise)> exec)
+{
+    auto promise = create_promise(env);
+
+    exec(promise);
+
+    return promise->Promise();
+}
+
+std::function<void()> tsfn_once_cb(
+    Napi::Env env,
+    Napi::Function callback,
+    std::string name,
+    std::function<std::function<void(TSFN_ARGS)>()> func)
+{
+    auto tsfn = TSFN_ONCE(callback, "");
+
+    return [=]() {
+        auto continuation = func();
+
+        tsfn->BlockingCall([=](TSFN_ARGS) { continuation(env, jsCallback); });
+        tsfn->Release();
+    };
+}
+
+std::function<void()> tsfn_once(Napi::Env env, std::string name, std::function<std::function<void(TSFN_ARGS)>()> func)
+{
+    return tsfn_once_cb(env, Napi::Function::New(env, [](CALLBACKINFO) {}), name, func);
+}
 
 // error creation
 

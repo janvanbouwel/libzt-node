@@ -38,12 +38,7 @@ declare class UDP {
     recvCallback: (data: Buffer, addr: string, port: number) => void,
   );
 
-  send(
-    data: Uint8Array,
-    addr: string,
-    port: number,
-    callback: (error?: NativeError) => void,
-  ): void;
+  send(data: Uint8Array, addr: string, port: number): Promise<void>;
   bind(
     addr: string,
     port: number,
