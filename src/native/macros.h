@@ -117,33 +117,10 @@ std::shared_ptr<Napi::Reference<Napi::Uint8Array> > ref_uint8array(Napi::Uint8Ar
  * returns pointer to a new threadafe function with the specified callback
  * Memory is automatically freed when the tsfn finalises
  */
-#define TSFN_ONCE(CALLBACK, NAME) TSFN_ONCE_WITH_FINALISE(CALLBACK, NAME, )
-
-/**
- * returns pointer to a new threadafe function with the specified callback
- * Memory is automatically freed when the tsfn finalises
- *
- * Third argument is napi reference that should be deleted when tsfn finalises
- */
-#define TSFN_ONCE_WITH_REF(CALLBACK, NAME, REF)                                                                        \
-    [&]() {                                                                                                            \
-        auto __data_ref = REF;                                                                                         \
-        return TSFN_ONCE_WITH_FINALISE(CALLBACK, NAME, { delete __data_ref; });                                        \
-    }()
-
-/**
- * returns pointer to a new threadafe function with the specified callback
- * Memory is automatically freed when the tsfn finalises
- *
- * Last argument can contain extra finalising code (copy capture)
- */
-#define TSFN_ONCE_WITH_FINALISE(CALLBACK, NAME, FINALISE)                                                              \
+#define TSFN_ONCE(CALLBACK, NAME)                                                                                      \
     [&]() {                                                                                                            \
         auto __tsfn = new Napi::ThreadSafeFunction;                                                                    \
-        *__tsfn = Napi::ThreadSafeFunction::New(env, CALLBACK, NAME, 0, 1, [=](Napi::Env) {                            \
-            FINALISE;                                                                                                  \
-            delete __tsfn;                                                                                             \
-        });                                                                                                            \
+        *__tsfn = Napi::ThreadSafeFunction::New(env, CALLBACK, NAME, 0, 1, [__tsfn](Napi::Env) { delete __tsfn; });         \
         return __tsfn;                                                                                                 \
     }()
 
@@ -173,10 +150,10 @@ std::function<void()> tsfn_once_cb(
 {
     auto tsfn = TSFN_ONCE(callback, "");
 
-    return [=]() {
+    return [tsfn, func]() {
         auto continuation = func();
 
-        tsfn->BlockingCall([=](TSFN_ARGS) { continuation(env, jsCallback); });
+        tsfn->BlockingCall([continuation](TSFN_ARGS) { continuation(env, jsCallback); });
         tsfn->Release();
     };
 }
@@ -187,6 +164,8 @@ std::function<void()> tsfn_once(Napi::Env env, std::string name, std::function<s
 }
 
 // error creation
+
+#define ERROR(REASON, CODE) MAKE_ERROR(REASON, { ERR_FIELD("code", NUMBER(CODE)); })
 
 #define MAKE_ERROR(REASON, FIELDS)                                                                                     \
     [&]() {                                                                                                            \

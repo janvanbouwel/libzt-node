@@ -27,11 +27,10 @@ CLASS(Socket)
         this->pcb = pcb;
     }
 
-  private:
     tcp_pcb* pcb = nullptr;
-
     Napi::ThreadSafeFunction emit;
 
+  private:
     VOID_METHOD(connect);
     VOID_METHOD(init);
     METHOD(send);
@@ -57,61 +56,69 @@ CLASS_INIT_IMPL(Socket)
     return exports;
 }
 
+err_t tcp_receive_cb(void* arg, struct tcp_pcb* tpcb, struct pbuf* p, err_t err)
+{
+    auto thiz = reinterpret_cast<Socket*>(arg);
+    if (thiz->emit.Acquire() != napi_ok) {
+        if (p)
+            ts_pbuf_free(p);
+        return ERR_OK;   // TODO: other return code?
+    }
+    thiz->emit.BlockingCall([p](TSFN_ARGS) {
+        if (! p) {
+            jsCallback.Call({ STRING("data"), UNDEFINED });
+        }
+        else {
+            auto data = Napi::Buffer<char>::NewOrCopy(
+                env,
+                reinterpret_cast<char*>(p->payload),
+                p->len,
+                [p](Napi::Env env, char* data) { ts_pbuf_free(p); });
+            jsCallback.Call({ STRING("data"), data });
+        }
+    });
+    thiz->emit.Release();
+    return ERR_OK;
+}
+
+err_t tcp_sent_cb(void* arg, struct tcp_pcb* tpcb, u16_t len)
+{
+    auto thiz = reinterpret_cast<Socket*>(arg);
+    thiz->emit.BlockingCall([len](TSFN_ARGS) { jsCallback.Call({ STRING("sent"), NUMBER(len) }); });
+    return ERR_OK;
+}
+
+void tcp_err_cb(void* arg, err_t err)
+{
+    auto thiz = reinterpret_cast<Socket*>(arg);
+    thiz->pcb = nullptr;   // TODO: cleanup tsfn properly
+    thiz->emit.BlockingCall([err](TSFN_ARGS) {
+        if (err == ERR_CLSD) {
+            jsCallback.Call({ STRING("close") });
+        }
+        else {
+            jsCallback.Call({ STRING("error"), MAKE_ERROR("TCP error", ERR_FIELD("code", NUMBER(err))).Value() });
+        }
+    });
+    thiz->emit.Release();
+}
+
 VOID_METHOD(Socket::init)
 {
     NB_ARGS(1);
     auto emit = ARG_FUNC(0);
     this->emit = Napi::ThreadSafeFunction::New(env, emit, "tcpEventEmitter", 0, 1);
 
-    typed_tcpip_callback([=]() {
+    typed_tcpip_callback([this]() {
         if (! this->pcb)
             this->pcb = tcp_new();
         tcp_arg(this->pcb, this);
 
-        tcp_recv(this->pcb, [](void* arg, struct tcp_pcb* tpcb, struct pbuf* p, err_t err) -> err_t {
-            auto thiz = reinterpret_cast<Socket*>(arg);
-            if (thiz->emit.Acquire() != napi_ok) {
-                if (p)
-                    ts_pbuf_free(p);
-                return ERR_OK;   // TODO: other return code?
-            }
-            thiz->emit.BlockingCall([=](TSFN_ARGS) {
-                if (! p) {
-                    jsCallback.Call({ STRING("data"), UNDEFINED });
-                }
-                else {
-                    auto data = Napi::Buffer<char>::NewOrCopy(
-                        env,
-                        reinterpret_cast<char*>(p->payload),
-                        p->len,
-                        [p](Napi::Env env, char* data) { ts_pbuf_free(p); });
-                    jsCallback.Call({ STRING("data"), data });
-                }
-            });
-            thiz->emit.Release();
-            return ERR_OK;
-        });
+        tcp_recv(this->pcb, tcp_receive_cb);
 
-        tcp_sent(this->pcb, [](void* arg, struct tcp_pcb* tpcb, u16_t len) -> err_t {
-            auto thiz = reinterpret_cast<Socket*>(arg);
-            thiz->emit.BlockingCall([=](TSFN_ARGS) { jsCallback.Call({ STRING("sent"), NUMBER(len) }); });
-            return ERR_OK;
-        });
+        tcp_sent(this->pcb, tcp_sent_cb);
 
-        tcp_err(this->pcb, [](void* arg, err_t err) {
-            auto thiz = reinterpret_cast<Socket*>(arg);
-            thiz->pcb = nullptr;   // TODO: cleanup tsfn properly
-            thiz->emit.BlockingCall([=](TSFN_ARGS) {
-                if (err == ERR_CLSD) {
-                    jsCallback.Call({ STRING("close") });
-                }
-                else {
-                    jsCallback.Call(
-                        { STRING("error"), MAKE_ERROR("TCP error", ERR_FIELD("code", NUMBER(err))).Value() });
-                }
-            });
-            thiz->emit.Release();
-        });
+        tcp_err(this->pcb, tcp_err_cb);
     });
 }
 VOID_METHOD(Socket::connect)
@@ -123,8 +130,8 @@ VOID_METHOD(Socket::connect)
     ip_addr_t ip_addr;
     ipaddr_aton(address.c_str(), &ip_addr);
 
-    typed_tcpip_callback([=]() {
-        tcp_connect(this->pcb, &ip_addr, port, [](void* arg, struct tcp_pcb* tpcb, err_t err) -> err_t {
+    typed_tcpip_callback([pcb = this->pcb, ip_addr, port]() {
+        tcp_connect(pcb, &ip_addr, port, [](void* arg, struct tcp_pcb* tpcb, err_t err) -> err_t {
             auto thiz = reinterpret_cast<Socket*>(arg);
             thiz->emit.BlockingCall([](TSFN_ARGS) { jsCallback.Call({ STRING("connect") }); });
             return ERR_OK;
@@ -160,12 +167,12 @@ VOID_METHOD(Socket::ack)
     NB_ARGS(1);
     int length = ARG_NUMBER(0);
 
-    typed_tcpip_callback([=]() { tcp_recved(this->pcb, length); });
+    typed_tcpip_callback([pcb = this->pcb, length]() { tcp_recved(pcb, length); });
 }
 
 VOID_METHOD(Socket::shutdown_wr)
 {
-    typed_tcpip_callback([=]() { tcp_shutdown(this->pcb, 0, 1); });
+    typed_tcpip_callback([pcb = this->pcb]() { tcp_shutdown(pcb, 0, 1); });
 }
 
 /* #########################################
@@ -180,16 +187,14 @@ CLASS(Server)
     CLASS_INIT_DECL();
     CONSTRUCTOR_DECL(Server);
 
+    Napi::ThreadSafeFunction onConnection;
+
   private:
     tcp_pcb* pcb;
-
-    Napi::ThreadSafeFunction onConnection;
 
     METHOD(listen);
     METHOD(address);
     METHOD(close);
-
-    tcp_accept_fn acceptCb;
 };
 
 Napi::FunctionReference* Server::constructor = new Napi::FunctionReference;
@@ -208,37 +213,38 @@ CLASS_INIT_IMPL(Server)
     return exports;
 }
 
+err_t tcp_accept_cb(void* arg, tcp_pcb* new_pcb, err_t err)
+{
+    auto thiz = reinterpret_cast<Server*>(arg);
+
+    // delay accepting connection until callback has been set up.
+    tcp_backlog_delayed(new_pcb);
+
+    thiz->onConnection.BlockingCall([err, new_pcb](TSFN_ARGS) {
+        if (err < 0) {
+            jsCallback.Call({ ERROR("Accept error", err).Value() });
+            return;
+        }
+
+        auto socket = Socket::constructor->New({});
+        Socket::Unwrap(socket)->set_pcb(new_pcb);
+
+        jsCallback.Call({ UNDEFINED, socket });
+
+        // event handlers set in callback so now accept connection
+        typed_tcpip_callback([new_pcb]() { tcp_backlog_accepted(new_pcb); });
+    });
+
+    return ERR_OK;
+}
+
 Server::CONSTRUCTOR(Server)
 {
     NB_ARGS(1);
     auto onConnection = ARG_FUNC(0);
     this->onConnection = Napi::ThreadSafeFunction::New(env, onConnection, "TCP::onConnection", 0, 1);
 
-    acceptCb = [](void* arg, tcp_pcb* new_pcb, err_t err) -> err_t {
-        auto thiz = reinterpret_cast<Server*>(arg);
-
-        // delay accepting connection until callback has been set up.
-        tcp_backlog_delayed(new_pcb);
-
-        thiz->onConnection.BlockingCall([=](TSFN_ARGS) {
-            if (err < 0) {
-                jsCallback.Call({ MAKE_ERROR("accept error", { ERR_FIELD("code", NUMBER(err)); }).Value() });
-                return;
-            }
-
-            auto socket = Socket::constructor->New({});
-            Socket::Unwrap(socket)->set_pcb(new_pcb);
-
-            jsCallback.Call({ UNDEFINED, socket });
-
-            // event handlers set in callback so now accept connection
-            typed_tcpip_callback([=]() { tcp_backlog_accepted(new_pcb); });
-        });
-
-        return ERR_OK;
-    };
-
-    typed_tcpip_callback([=]() {
+    typed_tcpip_callback([this]() {
         this->pcb = tcp_new();
         tcp_arg(this->pcb, this);
     });
@@ -262,12 +268,12 @@ METHOD(Server::listen)
                 int err = tcp_bind(this->pcb, &ip_addr, port);
                 if (err != ERR_OK) {
                     return [err, promise](TSFN_ARGS) {
-                        promise->Reject(MAKE_ERROR("failed to bind", { ERR_FIELD("code", NUMBER(err)); }).Value());
+                        promise->Reject(ERROR("failed to bind", err).Value());
                     };
                 }
 
                 this->pcb = tcp_listen(this->pcb);
-                tcp_accept(this->pcb, this->acceptCb);
+                tcp_accept(this->pcb, tcp_accept_cb);
 
                 return [promise](TSFN_ARGS) { promise->Resolve(UNDEFINED); };
             }));

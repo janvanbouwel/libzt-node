@@ -21,28 +21,12 @@ err_t typed_tcpip_callback(std::function<void()> callback)
         cb);
 }
 
+/**
+ * Threadsafe pbuf_free
+*/
 void ts_pbuf_free(pbuf* p)
 {
     tcpip_callback([](void* p) { pbuf_free(reinterpret_cast<pbuf*>(p)); }, p);
-}
-
-Napi::Promise lwip_thread_promise(
-    Napi::Env env,
-    std::function<std::function<void(Napi::Env, Napi::Promise::Deferred*)>()> callback)
-{
-    auto promise = new Napi::Promise::Deferred(env);
-
-    Napi::ThreadSafeFunction* tsfn =
-        TSFN_ONCE_WITH_FINALISE(Napi::Function::New(env, [](CALLBACKINFO) {}), "cb name", { delete promise; });
-
-    typed_tcpip_callback([=]() {
-        auto continuation = callback();
-
-        tsfn->BlockingCall([=](TSFN_ARGS) { continuation(env, promise); });
-        tsfn->Release();
-    });
-
-    return promise->Promise();
 }
 
 #endif

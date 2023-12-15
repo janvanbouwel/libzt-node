@@ -6,10 +6,10 @@
 #include <napi.h>
 #include <sstream>
 
-#define ERROR(ERR, FUN)                                                                                                \
+#define THROW_ERROR(ERR, FUN)                                                                                                \
     do {                                                                                                               \
         if (ERR < 0) {                                                                                                 \
-            auto error = MAKE_ERROR("Error during " FUN " call.", { ERR_FIELD("code", NUMBER(ERR)); });                \
+            auto error = ERROR("Error during " FUN " call.", ERR);                \
             throw error;                                                                                               \
         }                                                                                                              \
     } while (0)
@@ -22,7 +22,7 @@ VOID_METHOD(init_from_storage)
     auto configPath = ARG_STRING(0);
 
     int err = zts_init_from_storage(std::string(configPath).c_str());
-    ERROR(err, "init_from_storage");
+    THROW_ERROR(err, "init_from_storage");
 }
 
 Napi::ThreadSafeFunction event_callback;
@@ -33,7 +33,7 @@ void event_handler(void* msgPtr)
 
     zts_event_msg_t* msg = reinterpret_cast<zts_event_msg_t*>(msgPtr);
     int event = msg->event_code;
-    auto cb = [=](TSFN_ARGS) { jsCallback.Call({ NUMBER(event) }); };
+    auto cb = [event](TSFN_ARGS) { jsCallback.Call({ NUMBER(event) }); };
 
     event_callback.NonBlockingCall(cb);
 
@@ -51,7 +51,7 @@ VOID_METHOD(init_set_event_handler)
     event_callback = Napi::ThreadSafeFunction::New(env, cb, "zts_event_listener", 0, 1);
 
     int err = zts_init_set_event_handler(&event_handler);
-    ERROR(err, "init_set_event_handler");
+    THROW_ERROR(err, "init_set_event_handler");
 }
 
 // ### node ###
@@ -61,7 +61,7 @@ VOID_METHOD(node_start)
     NO_ARGS();
 
     int err = zts_node_start();
-    ERROR(err, "node_start");
+    THROW_ERROR(err, "node_start");
 }
 
 METHOD(node_is_online)
@@ -87,7 +87,7 @@ VOID_METHOD(node_stop)
     NO_ARGS();
 
     int err = zts_node_stop();
-    ERROR(err, "node_stop");
+    THROW_ERROR(err, "node_stop");
 
     if (event_callback)
         event_callback.Abort();
@@ -98,7 +98,7 @@ VOID_METHOD(node_free)
     NO_ARGS();
 
     int err = zts_node_free();
-    ERROR(err, "node_free");
+    THROW_ERROR(err, "node_free");
 
     if (event_callback)
         event_callback.Abort();
@@ -117,7 +117,7 @@ VOID_METHOD(net_join)
     auto net_id = ARG_STRING(0);
 
     int err = zts_net_join(convert_net_id(net_id));
-    ERROR(err, "net_join");
+    THROW_ERROR(err, "net_join");
 }
 
 VOID_METHOD(net_leave)
@@ -126,7 +126,7 @@ VOID_METHOD(net_leave)
     auto net_id = ARG_STRING(0);
 
     int err = zts_net_leave(convert_net_id(net_id));
-    ERROR(err, "net_leave");
+    THROW_ERROR(err, "net_leave");
 }
 
 METHOD(net_transport_is_ready)
@@ -150,7 +150,7 @@ METHOD(addr_get_str)
     char addr[ZTS_IP_MAX_STR_LEN];
 
     int err = zts_addr_get_str(convert_net_id(net_id), family, addr, ZTS_IP_MAX_STR_LEN);
-    ERROR(err, "addr_get_str");
+    THROW_ERROR(err, "addr_get_str");
 
     return STRING(addr);
 }

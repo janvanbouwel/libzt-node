@@ -162,7 +162,7 @@ METHOD(Socket::send)
                 return [err, dataRef, promise](TSFN_ARGS) {
                     dataRef->Reset();
                     if (err != ERR_OK)
-                        promise->Reject(MAKE_ERROR("send error", { ERR_FIELD("code", NUMBER(err)); }).Value());
+                        promise->Reject(ERROR("send error", err).Value());
                     else
                         promise->Resolve(UNDEFINED);
                 };
@@ -189,7 +189,7 @@ METHOD(Socket::bind)
 
             return [err, promise](TSFN_ARGS) {
                 if (err != ERR_OK)
-                    promise->Reject(MAKE_ERROR("Bind error", { ERR_FIELD("code", NUMBER(err)); }).Value());
+                    promise->Reject(ERROR("Bind error", err).Value());
                 else
                     promise->Resolve(UNDEFINED);
             };
@@ -268,7 +268,7 @@ METHOD(Socket::connect)
 
             return [err, promise](TSFN_ARGS) {
                 if (err != ERR_OK)
-                    promise->Reject(MAKE_ERROR("Connect error", { ERR_FIELD("code", NUMBER(err)); }).Value());
+                    promise->Reject(ERROR("Connect error", err).Value());
                 else
                     promise->Resolve(UNDEFINED);
             };
@@ -278,7 +278,7 @@ METHOD(Socket::connect)
 
 VOID_METHOD(Socket::disconnect)
 {
-    typed_tcpip_callback([=]() { udp_disconnect(pcb); });
+    typed_tcpip_callback([pcb = this->pcb]() { udp_disconnect(pcb); });
 }
 
 }   // namespace UDP
