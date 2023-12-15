@@ -23,11 +23,7 @@ declare class Server {
       socket: nativeSocket,
     ) => void,
   );
-  listen(
-    port: number,
-    address: string,
-    onListening: (error?: NativeError) => void,
-  ): void;
+  listen(port: number, address: string): Promise<void>;
   address(): { port: number; address: string; family: "IPv6" | "IPv4" };
   close(callback: () => void): void;
 }

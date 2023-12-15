@@ -185,7 +185,7 @@ CLASS(Server)
 
     Napi::ThreadSafeFunction onConnection;
 
-    VOID_METHOD(listen);
+    METHOD(listen);
     METHOD(address);
     VOID_METHOD(close);
 
@@ -244,14 +244,11 @@ Server::CONSTRUCTOR(Server)
     });
 }
 
-VOID_METHOD(Server::listen)
+METHOD(Server::listen)
 {
-    NB_ARGS(3);
+    NB_ARGS(2);
     int port = ARG_NUMBER(0);
     std::string address = ARG_STRING(1);
-    auto callback = ARG_FUNC(2);
-
-    auto onListening = TSFN_ONCE(callback, "onListening");
 
     ip_addr_t ip_addr;
     if (address.size() == 0)
@@ -259,19 +256,21 @@ VOID_METHOD(Server::listen)
     else
         ipaddr_aton(address.c_str(), &ip_addr);
 
-    typed_tcpip_callback([=]() {
-        int err = tcp_bind(this->pcb, &ip_addr, port);
-        if (err < 0) {
-            onListening->BlockingCall([=](TSFN_ARGS) {
-                jsCallback.Call({ MAKE_ERROR("failed to bind", { ERR_FIELD("code", NUMBER(err)); }).Value() });
-            });
-            onListening->Release();
-            return;
-        }
-        this->pcb = tcp_listen(this->pcb);
-        tcp_accept(this->pcb, this->acceptCb);
-        onListening->BlockingCall([](TSFN_ARGS) { jsCallback.Call({}); });
-        onListening->Release();
+    return async_run(env, [&](DeferredPromise promise) {
+        typed_tcpip_callback(
+            tsfn_once(env, "Server::listen", [this, port, ip_addr, promise]() -> std::function<void(TSFN_ARGS)> {
+                int err = tcp_bind(this->pcb, &ip_addr, port);
+                if (err != ERR_OK) {
+                    return [err, promise](TSFN_ARGS) {
+                        promise->Reject(MAKE_ERROR("failed to bind", { ERR_FIELD("code", NUMBER(err)); }).Value());
+                    };
+                }
+
+                this->pcb = tcp_listen(this->pcb);
+                tcp_accept(this->pcb, this->acceptCb);
+
+                return [promise](TSFN_ARGS) { promise->Resolve(UNDEFINED); };
+            }));
     });
 }
 

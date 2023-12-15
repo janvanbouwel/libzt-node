@@ -33,11 +33,10 @@ export class Server extends EventEmitter {
   listen(port: number, host = "::", callback?: () => void) {
     if (callback) this.on("listening", callback);
 
-    this.internal.listen(port, host, (error) => {
-      if (error) console.log(error);
-
-      this.emit("listening");
-    });
+    this.internal
+      .listen(port, host)
+      .then(() => this.emit("listening"))
+      .catch((reason) => console.log(reason));
   }
 
   address() {
