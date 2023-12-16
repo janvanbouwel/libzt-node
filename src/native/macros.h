@@ -120,7 +120,7 @@ std::shared_ptr<Napi::Reference<Napi::Uint8Array> > ref_uint8array(Napi::Uint8Ar
 #define TSFN_ONCE(CALLBACK, NAME)                                                                                      \
     [&]() {                                                                                                            \
         auto __tsfn = new Napi::ThreadSafeFunction;                                                                    \
-        *__tsfn = Napi::ThreadSafeFunction::New(env, CALLBACK, NAME, 0, 1, [__tsfn](Napi::Env) { delete __tsfn; });         \
+        *__tsfn = Napi::ThreadSafeFunction::New(env, CALLBACK, NAME, 0, 1, [__tsfn](Napi::Env) { delete __tsfn; });    \
         return __tsfn;                                                                                                 \
     }()
 
@@ -142,25 +142,38 @@ Napi::Promise async_run(Napi::Env env, std::function<void(DeferredPromise)> exec
     return promise->Promise();
 }
 
-std::function<void()> tsfn_once_cb(
-    Napi::Env env,
-    Napi::Function callback,
-    std::string name,
-    std::function<std::function<void(TSFN_ARGS)>()> func)
+template <typename T>
+std::function<void()>
+tsfn_once(Napi::Env env, std::string name, std::function<T()> threaded, std::function<void(TSFN_ARGS, T)> js_callback)
 {
+    auto callback = Napi::Function::New(env, [](CALLBACKINFO) {});
+
     auto tsfn = TSFN_ONCE(callback, "");
 
-    return [tsfn, func]() {
-        auto continuation = func();
+    return [tsfn, threaded, js_callback]() {
+        T ret = threaded();
 
-        tsfn->BlockingCall([continuation](TSFN_ARGS) { continuation(env, jsCallback); });
+        tsfn->BlockingCall([js_callback, ret](TSFN_ARGS) { js_callback(env, jsCallback, ret); });
         tsfn->Release();
     };
 }
 
-std::function<void()> tsfn_once(Napi::Env env, std::string name, std::function<std::function<void(TSFN_ARGS)>()> func)
+std::function<void()> tsfn_once_void(
+    Napi::Env env,
+    std::string name,
+    std::function<void()> threaded,
+    std::function<void(TSFN_ARGS)> js_callback)
 {
-    return tsfn_once_cb(env, Napi::Function::New(env, [](CALLBACKINFO) {}), name, func);
+    auto callback = Napi::Function::New(env, [](CALLBACKINFO) {});
+
+    auto tsfn = TSFN_ONCE(callback, "");
+
+    return [tsfn, threaded, js_callback]() {
+        threaded();
+
+        tsfn->BlockingCall([js_callback](TSFN_ARGS) { js_callback(env, jsCallback); });
+        tsfn->Release();
+    };
 }
 
 // error creation

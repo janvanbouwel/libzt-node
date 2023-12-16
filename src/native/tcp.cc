@@ -145,19 +145,20 @@ METHOD(Socket::send)
     auto data = ARG_UINT8ARRAY(0);
 
     return async_run(env, [&](auto promise) {
-        typed_tcpip_callback(tsfn_once(
+        typed_tcpip_callback(tsfn_once<u16_t>(
             env,
             "Socket::send",
-            [this, bufLength = data.ByteLength(), buffer = data.Data(), dataRef = ref_uint8array(data), promise]() {
+            [this, bufLength = data.ByteLength(), buffer = data.Data()]() {
                 auto sndbuf = tcp_sndbuf(this->pcb);
 
                 u16_t len = (sndbuf < bufLength) ? sndbuf : bufLength;
                 tcp_write(this->pcb, buffer, len, TCP_WRITE_FLAG_COPY);
 
-                return [len, dataRef, promise](auto env, auto) -> void {
-                    dataRef->Reset();
-                    promise->Resolve(NUMBER(len));
-                };
+                return len;
+            },
+            [dataRef = ref_uint8array(data), promise](TSFN_ARGS, auto len) -> void {
+                dataRef->Reset();
+                promise->Resolve(NUMBER(len));
             }));
     });
 }
@@ -263,19 +264,25 @@ METHOD(Server::listen)
         ipaddr_aton(address.c_str(), &ip_addr);
 
     return async_run(env, [&](DeferredPromise promise) {
-        typed_tcpip_callback(
-            tsfn_once(env, "Server::listen", [this, port, ip_addr, promise]() -> std::function<void(TSFN_ARGS)> {
-                int err = tcp_bind(this->pcb, &ip_addr, port);
-                if (err != ERR_OK) {
-                    return [err, promise](TSFN_ARGS) {
-                        promise->Reject(ERROR("failed to bind", err).Value());
-                    };
-                }
+        typed_tcpip_callback(tsfn_once<err_t>(
+            env,
+            "Server::listen",
+            [this, port, ip_addr]() {
+                auto err = tcp_bind(this->pcb, &ip_addr, port);
+                if (err != ERR_OK)
+                    return err;
 
                 this->pcb = tcp_listen(this->pcb);
                 tcp_accept(this->pcb, tcp_accept_cb);
 
-                return [promise](TSFN_ARGS) { promise->Resolve(UNDEFINED); };
+                return static_cast<err_t>(ERR_OK);
+            },
+            [promise](TSFN_ARGS, auto err) {
+                if (err != ERR_OK) {
+                    return promise->Reject(ERROR("failed to bind", err).Value());
+                }
+                else
+                    return promise->Resolve(UNDEFINED);
             }));
     });
 }
@@ -299,14 +306,16 @@ METHOD(Server::close)
     NO_ARGS();
 
     return async_run(env, [&](DeferredPromise promise) {
-        typed_tcpip_callback(tsfn_once(env, "Server::close", [this, promise]() {
-            tcp_close(this->pcb);
-            this->pcb = nullptr;
+        typed_tcpip_callback(tsfn_once_void(
+            env,
+            "Server::close",
+            [this]() {
+                tcp_close(this->pcb);
+                this->pcb = nullptr;
 
-            this->onConnection.Release();
-
-            return [promise](TSFN_ARGS) { promise->Resolve(UNDEFINED); };
-        }));
+                this->onConnection.Release();
+            },
+            [promise](TSFN_ARGS) { promise->Resolve(UNDEFINED); }));
     });
 }
 

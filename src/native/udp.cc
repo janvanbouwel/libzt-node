@@ -142,16 +142,10 @@ METHOD(Socket::send)
         ipaddr_aton(addr.c_str(), &ip_addr);
 
     return async_run(env, [&](DeferredPromise promise) {
-        typed_tcpip_callback(tsfn_once(
+        typed_tcpip_callback(tsfn_once<err_t>(
             env,
             "UDP::Socket::send",
-            [this,
-             port,
-             ip_addr,
-             len = data.ByteLength(),
-             buffer = data.Data(),
-             dataRef = ref_uint8array(data),
-             promise]() {
+            [this, port, ip_addr, len = data.ByteLength(), buffer = data.Data()]() {
                 struct pbuf* p = pbuf_alloc(PBUF_TRANSPORT, len, PBUF_REF);
                 p->payload = buffer;
 
@@ -159,13 +153,14 @@ METHOD(Socket::send)
 
                 pbuf_free(p);
 
-                return [err, dataRef, promise](TSFN_ARGS) {
-                    dataRef->Reset();
-                    if (err != ERR_OK)
-                        promise->Reject(ERROR("send error", err).Value());
-                    else
-                        promise->Resolve(UNDEFINED);
-                };
+                return err;
+            },
+            [dataRef = ref_uint8array(data), promise](TSFN_ARGS, auto err) {
+                dataRef->Reset();
+                if (err != ERR_OK)
+                    promise->Reject(ERROR("send error", err).Value());
+                else
+                    promise->Resolve(UNDEFINED);
             }));
     });
 }
@@ -184,16 +179,16 @@ METHOD(Socket::bind)
         ipaddr_aton(addr.c_str(), &ip_addr);
 
     return async_run(env, [&](DeferredPromise promise) {
-        typed_tcpip_callback(tsfn_once(env, "UDP::Socket::bind", [this, ip_addr, port, promise]() {
-            auto err = udp_bind(pcb, &ip_addr, port);
-
-            return [err, promise](TSFN_ARGS) {
+        typed_tcpip_callback(tsfn_once<err_t>(
+            env,
+            "UDP::Socket::bind",
+            [pcb = this->pcb, ip_addr, port]() { return udp_bind(pcb, &ip_addr, port); },
+            [promise](TSFN_ARGS, auto err) {
                 if (err != ERR_OK)
                     promise->Reject(ERROR("Bind error", err).Value());
                 else
                     promise->Resolve(UNDEFINED);
-            };
-        }));
+            }));
     });
 }
 
@@ -206,15 +201,17 @@ METHOD(Socket::close)
             auto old_pcb = pcb;
             pcb = nullptr;
 
-            typed_tcpip_callback(tsfn_once(env, "UDP::Socket::close", [old_pcb, this, promise]() {
-                LWIP_ASSERT("pcb was null", old_pcb != nullptr);
-                udp_remove(old_pcb);
-
-                return [this, promise](TSFN_ARGS) {
+            typed_tcpip_callback(tsfn_once_void(
+                env,
+                "UDP::Socket::close",
+                [old_pcb]() {
+                    LWIP_ASSERT("pcb was null", old_pcb != nullptr);
+                    udp_remove(old_pcb);
+                },
+                [onRecv = this->onRecv, promise](TSFN_ARGS) {
                     onRecv.Abort();
                     promise->Resolve(UNDEFINED);
-                };
-            }));
+                }));
             pcb = nullptr;
         }
         else {
@@ -263,16 +260,16 @@ METHOD(Socket::connect)
     ipaddr_aton(address.c_str(), &addr);
 
     return async_run(env, [&](DeferredPromise promise) {
-        typed_tcpip_callback(tsfn_once(env, "UDP::Socket::connect", [this, addr, port, promise]() {
-            auto err = udp_connect(pcb, &addr, port);
-
-            return [err, promise](TSFN_ARGS) {
+        typed_tcpip_callback(tsfn_once<err_t>(
+            env,
+            "UDP::Socket::connect",
+            [pcb = this->pcb, addr, port]() { return udp_connect(pcb, &addr, port); },
+            [promise](TSFN_ARGS, auto err) {
                 if (err != ERR_OK)
                     promise->Reject(ERROR("Connect error", err).Value());
                 else
                     promise->Resolve(UNDEFINED);
-            };
-        }));
+            }));
     });
 }
 
