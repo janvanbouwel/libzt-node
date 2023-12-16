@@ -2,6 +2,8 @@
 #define LWIP_MACROS
 
 #include "lwip/tcpip.h"
+#include "macros.h"
+#include "napi.h"
 
 #include <functional>
 
@@ -19,6 +21,9 @@ err_t typed_tcpip_callback(std::function<void()> callback)
         cb);
 }
 
+/**
+ * Threadsafe pbuf_free
+*/
 void ts_pbuf_free(pbuf* p)
 {
     tcpip_callback([](void* p) { pbuf_free(reinterpret_cast<pbuf*>(p)); }, p);

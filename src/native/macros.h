@@ -1,6 +1,10 @@
 #ifndef NAPI_MACROS
 #define NAPI_MACROS
 
+#include "napi.h"
+
+#include <functional>
+
 // INITIALISATION
 
 #define INIT_ADDON(NAME)                                                                                               \
@@ -13,7 +17,9 @@
     NODE_API_MODULE(NAME, Init_Wrap);                                                                                  \
     void Init(Napi::Env env, Napi::Object exports)
 
-#define EXPORT(F) exports[#F] = Napi::Function::New(env, F)
+#define EXPORT(NAME, VALUE) exports[#NAME] = VALUE
+
+#define EXPORT_FUNCTION(F) EXPORT(F, FUNCTION(F))
 
 // CLASS
 
@@ -23,9 +29,9 @@
 
 #define CLASS(NAME) class NAME : public Napi::ObjectWrap<NAME>
 
-#define CONSTRUCTOR_DECL(NAME) NAME(CALLBACKINFO)
+#define CONSTRUCTOR(NAME) NAME(CALLBACKINFO) : Napi::ObjectWrap<NAME>(info)
 
-#define CONSTRUCTOR_IMPL(NAME) NAME::NAME(CALLBACKINFO) : Napi::ObjectWrap<NAME>(info)
+#define CONSTRUCTOR_DECL(NAME) NAME(CALLBACKINFO)
 
 #define CLASS_INIT_DECL() static Napi::Object Init(Napi::Env env, Napi::Object exports)
 
@@ -35,17 +41,19 @@
 
 #define CLASS_INSTANCE_METHOD(CLASS, NAME) InstanceMethod<&CLASS::NAME>(#NAME, napi_default)
 
+#define CLASS_SET_CONSTRUCTOR(CLASS)                                                                                   \
+    [&]() {                                                                                                            \
+        constructor = new Napi::FunctionReference;                                                                     \
+        *constructor = Napi::Persistent(CLASS);                                                                        \
+    }()
+
 // METHOD
 
 #define CALLBACKINFO const Napi::CallbackInfo& info
 
+#define VOID_METHOD(NAME) void NAME(CALLBACKINFO)
+
 #define METHOD(NAME) Napi::Value NAME(CALLBACKINFO)
-
-#define CLASS_METHOD_IMPL(CLASS, NAME) METHOD(CLASS::NAME)
-
-#define HANDLE_SCOPE()                                                                                                 \
-    Napi::HandleScope scope(Env());                                                                                    \
-    Napi::Env env = Env();
 
 // ENVIRONMENT AND ARGUMENTS
 
@@ -71,7 +79,7 @@
 
 // WRAP DATA
 
-#define VOID env.Undefined()
+#define UNDEFINED env.Undefined()
 
 #define BOOL(VALUE) Napi::Boolean::New(env, VALUE)
 
@@ -89,39 +97,75 @@
         return __ret_obj;                                                                                              \
     }()
 
+#define FUNCTION(F) Napi::Function::New(env, F, #F)
+
 // Reference
 
 /**
  * Returns pointer to new reference. Has to be manually deleted!
  */
-#define NEW_REF_UINT8ARRAY(ARRAY)                                                                                      \
-    [&]() {                                                                                                            \
-        auto __ref = new Napi::Reference<Napi::Uint8Array>;                                                            \
-        *__ref = Napi::Persistent(ARRAY);                                                                              \
-        return __ref;                                                                                                  \
-    }()
+std::shared_ptr<Napi::Reference<Napi::Uint8Array> > ref_uint8array(Napi::Uint8Array array)
+{
+    auto ref = new Napi::Reference<Napi::Uint8Array>;
+    *ref = Napi::Persistent(array);
+    return std::shared_ptr<Napi::Reference<Napi::Uint8Array> >(ref);
+}
 
 // Threadsafe
 
 /**
  * returns pointer to a new threadafe function with the specified callback
  * Memory is automatically freed when the tsfn finalises
- *
- * Last argument can contain extra finalising code (copy capture)
  */
-#define TSFN_ONCE(CALLBACK, NAME, FINALISE)                                                                            \
+#define TSFN_ONCE(CALLBACK, NAME)                                                                                      \
     [&]() {                                                                                                            \
         auto __tsfn = new Napi::ThreadSafeFunction;                                                                    \
-        *__tsfn = Napi::ThreadSafeFunction::New(env, CALLBACK, NAME, 0, 1, [=](Napi::Env) {                            \
-            FINALISE;                                                                                                  \
-            delete __tsfn;                                                                                             \
-        });                                                                                                            \
+        *__tsfn = Napi::ThreadSafeFunction::New(env, CALLBACK, NAME, 0, 1, [__tsfn](Napi::Env) { delete __tsfn; });         \
         return __tsfn;                                                                                                 \
     }()
 
 #define TSFN_ARGS Napi::Env env, Napi::Function jsCallback
 
+typedef std::shared_ptr<Napi::Promise::Deferred> DeferredPromise;
+
+DeferredPromise create_promise(Napi::Env env)
+{
+    return std::make_shared<Napi::Promise::Deferred>(env);
+}
+
+Napi::Promise async_run(Napi::Env env, std::function<void(DeferredPromise)> exec)
+{
+    auto promise = create_promise(env);
+
+    exec(promise);
+
+    return promise->Promise();
+}
+
+std::function<void()> tsfn_once_cb(
+    Napi::Env env,
+    Napi::Function callback,
+    std::string name,
+    std::function<std::function<void(TSFN_ARGS)>()> func)
+{
+    auto tsfn = TSFN_ONCE(callback, "");
+
+    return [tsfn, func]() {
+        auto continuation = func();
+
+        tsfn->BlockingCall([continuation](TSFN_ARGS) { continuation(env, jsCallback); });
+        tsfn->Release();
+    };
+}
+
+std::function<void()> tsfn_once(Napi::Env env, std::string name, std::function<std::function<void(TSFN_ARGS)>()> func)
+{
+    return tsfn_once_cb(env, Napi::Function::New(env, [](CALLBACKINFO) {}), name, func);
+}
+
 // error creation
+
+#define ERROR(REASON, CODE) MAKE_ERROR(REASON, { ERR_FIELD("code", NUMBER(CODE)); })
 
 #define MAKE_ERROR(REASON, FIELDS)                                                                                     \
     [&]() {                                                                                                            \

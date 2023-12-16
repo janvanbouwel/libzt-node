@@ -33,11 +33,10 @@ export class Server extends EventEmitter {
   listen(port: number, host = "::", callback?: () => void) {
     if (callback) this.on("listening", callback);
 
-    this.internal.listen(port, host, (error) => {
-      if (error) console.log(error);
-
-      this.emit("listening");
-    });
+    this.internal
+      .listen(port, host)
+      .then(() => this.emit("listening"))
+      .catch((reason) => console.log(reason));
   }
 
   address() {
@@ -47,7 +46,7 @@ export class Server extends EventEmitter {
   close() {
     if (!this.listening) return;
     this.listening = false;
-    this.internal.close(() => {
+    this.internal.close().then(() => {
       this.closed = true;
       if (this.connAmount === 0) this.emit("close");
     });
@@ -149,29 +148,28 @@ class Socket extends Duplex {
     this.realWrite(chunk, callback);
   }
 
-  private realWrite(
+  private async realWrite(
     chunk: Buffer,
     callback: (error?: Error | null) => void,
-  ): void {
+  ): Promise<void> {
     const currentWritten = this.bytesWritten;
-    this.internal.send(chunk, (length) => {
-      // console.log(`written ${length}`);
-      // everything was written out
-      if (length === chunk.length) {
-        callback();
-        return;
-      }
+    const length = await this.internal.send(chunk);
+    // console.log(`written ${length}`);
+    // everything was written out
+    if (length === chunk.length) {
+      callback();
+      return;
+    }
 
-      // not everything was written out
-      const continuation = () => {
-        this.realWrite(chunk.subarray(length), callback);
-      };
+    // not everything was written out
+    const continuation = () => {
+      this.realWrite(chunk.subarray(length), callback);
+    };
 
-      // new space became available in the time it took to sync threads
-      if (currentWritten !== this.bytesWritten) continuation();
-      // wait for more space to become available
-      else this.internalEvents.once("sent", continuation);
-    });
+    // new space became available in the time it took to sync threads
+    if (currentWritten !== this.bytesWritten) continuation();
+    // wait for more space to become available
+    else this.internalEvents.once("sent", continuation);
   }
 
   _final(callback: (error?: Error | null | undefined) => void): void {

@@ -12,7 +12,7 @@ export declare class nativeSocket {
   init(emit: (event: string, ...args: unknown[]) => boolean): void;
   connect(port: number, address: string): void;
   ack(length: number): void;
-  send(data: Uint8Array, callback: (length: number) => void): void;
+  send(data: Uint8Array): Promise<number>;
   shutdown_wr(): void;
 }
 
@@ -23,13 +23,9 @@ declare class Server {
       socket: nativeSocket,
     ) => void,
   );
-  listen(
-    port: number,
-    address: string,
-    onListening: (error?: NativeError) => void,
-  ): void;
+  listen(port: number, address: string): Promise<void>;
   address(): { port: number; address: string; family: "IPv6" | "IPv4" };
-  close(callback: () => void): void;
+  close(): Promise<void>;
 }
 
 declare class UDP {
@@ -38,27 +34,14 @@ declare class UDP {
     recvCallback: (data: Buffer, addr: string, port: number) => void,
   );
 
-  send(
-    data: Uint8Array,
-    addr: string,
-    port: number,
-    callback: (error?: NativeError) => void,
-  ): void;
-  bind(
-    addr: string,
-    port: number,
-    callback: (error?: NativeError) => void,
-  ): void;
-  close(callback: () => void): void;
+  send(data: Uint8Array, addr: string, port: number): Promise<void>;
+  bind(addr: string, port: number): Promise<void>;
+  close(): Promise<void>;
 
   address(): { port: number; address: string; family: "udp6" | "udp4" };
   remoteAddress(): { port: number; address: string; family: "udp6" | "udp4" };
 
-  connect(
-    addr: string,
-    port: number,
-    callback?: (error?: NativeError) => void,
-  ): void;
+  connect(addr: string, port: number): Promise<void>;
   disconnect(): void;
 
   ref(): void;

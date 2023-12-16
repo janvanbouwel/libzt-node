@@ -6,36 +6,23 @@
 #include <napi.h>
 #include <sstream>
 
-#define ERROR(ERR, FUN)                                                                                                \
+#define THROW_ERROR(ERR, FUN)                                                                                                \
     do {                                                                                                               \
         if (ERR < 0) {                                                                                                 \
-            auto error = Napi::Error::New(info.Env(), "Error during " FUN " call");                                    \
-            error.Set(STRING("code"), NUMBER(ERR));                                                                    \
-            throw error;                                                                                               \
-        }                                                                                                              \
-    } while (0)
-
-#define CHECK_ERRNO(ERR, FUN)                                                                                          \
-    do {                                                                                                               \
-        if (ERR < 0) {                                                                                                 \
-            auto error = Napi::Error::New(info.Env(), "Error during " FUN " call");                                    \
-            error.Set(STRING("code"), NUMBER(ERR));                                                                    \
-            error.Set(STRING("errno"), NUMBER(zts_errno));                                                             \
+            auto error = ERROR("Error during " FUN " call.", ERR);                \
             throw error;                                                                                               \
         }                                                                                                              \
     } while (0)
 
 // ### init ###
 
-METHOD(init_from_storage)
+VOID_METHOD(init_from_storage)
 {
     NB_ARGS(1);
     auto configPath = ARG_STRING(0);
 
     int err = zts_init_from_storage(std::string(configPath).c_str());
-    ERROR(err, "init_from_storage");
-
-    return VOID;
+    THROW_ERROR(err, "init_from_storage");
 }
 
 Napi::ThreadSafeFunction event_callback;
@@ -46,7 +33,7 @@ void event_handler(void* msgPtr)
 
     zts_event_msg_t* msg = reinterpret_cast<zts_event_msg_t*>(msgPtr);
     int event = msg->event_code;
-    auto cb = [=](TSFN_ARGS) { jsCallback.Call({ NUMBER(event) }); };
+    auto cb = [event](TSFN_ARGS) { jsCallback.Call({ NUMBER(event) }); };
 
     event_callback.NonBlockingCall(cb);
 
@@ -56,7 +43,7 @@ void event_handler(void* msgPtr)
 /**
  * @param cb { (event: number) => void } Callback that is called for every event.
  */
-METHOD(init_set_event_handler)
+VOID_METHOD(init_set_event_handler)
 {
     NB_ARGS(1);
     auto cb = ARG_FUNC(0);
@@ -64,21 +51,17 @@ METHOD(init_set_event_handler)
     event_callback = Napi::ThreadSafeFunction::New(env, cb, "zts_event_listener", 0, 1);
 
     int err = zts_init_set_event_handler(&event_handler);
-    ERROR(err, "init_set_event_handler");
-
-    return VOID;
+    THROW_ERROR(err, "init_set_event_handler");
 }
 
 // ### node ###
 
-METHOD(node_start)
+VOID_METHOD(node_start)
 {
     NO_ARGS();
 
     int err = zts_node_start();
-    ERROR(err, "node_start");
-
-    return VOID;
+    THROW_ERROR(err, "node_start");
 }
 
 METHOD(node_is_online)
@@ -99,30 +82,26 @@ METHOD(node_get_id)
     return STRING(ss.str());
 }
 
-METHOD(node_stop)
+VOID_METHOD(node_stop)
 {
     NO_ARGS();
 
     int err = zts_node_stop();
-    ERROR(err, "node_stop");
+    THROW_ERROR(err, "node_stop");
 
     if (event_callback)
         event_callback.Abort();
-
-    return VOID;
 }
 
-METHOD(node_free)
+VOID_METHOD(node_free)
 {
     NO_ARGS();
 
     int err = zts_node_free();
-    ERROR(err, "node_free");
+    THROW_ERROR(err, "node_free");
 
     if (event_callback)
         event_callback.Abort();
-
-    return VOID;
 }
 
 // ### net ###
@@ -132,26 +111,22 @@ uint64_t convert_net_id(std::string net_id)
     return std::stoull(net_id, nullptr, 16);
 }
 
-METHOD(net_join)
+VOID_METHOD(net_join)
 {
     NB_ARGS(1);
     auto net_id = ARG_STRING(0);
 
     int err = zts_net_join(convert_net_id(net_id));
-    ERROR(err, "net_join");
-
-    return VOID;
+    THROW_ERROR(err, "net_join");
 }
 
-METHOD(net_leave)
+VOID_METHOD(net_leave)
 {
     NB_ARGS(1);
     auto net_id = ARG_STRING(0);
 
     int err = zts_net_leave(convert_net_id(net_id));
-    ERROR(err, "net_leave");
-
-    return VOID;
+    THROW_ERROR(err, "net_leave");
 }
 
 METHOD(net_transport_is_ready)
@@ -175,7 +150,7 @@ METHOD(addr_get_str)
     char addr[ZTS_IP_MAX_STR_LEN];
 
     int err = zts_addr_get_str(convert_net_id(net_id), family, addr, ZTS_IP_MAX_STR_LEN);
-    ERROR(err, "addr_get_str");
+    THROW_ERROR(err, "addr_get_str");
 
     return STRING(addr);
 }
@@ -185,23 +160,22 @@ METHOD(addr_get_str)
 INIT_ADDON(zts)
 {
     // init
-    EXPORT(init_from_storage);
-    EXPORT(init_set_event_handler);
-
+    EXPORT_FUNCTION(init_from_storage);
+    EXPORT_FUNCTION(init_set_event_handler);
     // node
-    EXPORT(node_start);
-    EXPORT(node_is_online);
-    EXPORT(node_get_id);
-    EXPORT(node_stop);
-    EXPORT(node_free);
+    EXPORT_FUNCTION(node_start);
+    EXPORT_FUNCTION(node_is_online);
+    EXPORT_FUNCTION(node_get_id);
+    EXPORT_FUNCTION(node_stop);
+    EXPORT_FUNCTION(node_free);
 
     // net
-    EXPORT(net_join);
-    EXPORT(net_leave);
-    EXPORT(net_transport_is_ready);
+    EXPORT_FUNCTION(net_join);
+    EXPORT_FUNCTION(net_leave);
+    EXPORT_FUNCTION(net_transport_is_ready);
 
     // addr
-    EXPORT(addr_get_str);
+    EXPORT_FUNCTION(addr_get_str);
 
     INIT_CLASS(TCP::Socket);
     INIT_CLASS(TCP::Server);

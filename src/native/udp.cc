@@ -1,7 +1,7 @@
 #include "lwip/udp.h"
 
 #include "ZeroTierSockets.h"
-#include "lwip-macros.h"
+#include "lwip-util.h"
 #include "lwip/tcpip.h"
 #include "macros.h"
 
@@ -40,26 +40,24 @@ CLASS(Socket)
     METHOD(remoteAddress);
 
     METHOD(connect);
-    METHOD(disconnect);
-    METHOD(ref)
+    VOID_METHOD(disconnect);
+    VOID_METHOD(ref)
     {
         NO_ARGS();
         onRecv.Ref(env);
-        return VOID;
     }
-    METHOD(unref)
+    VOID_METHOD(unref)
     {
         NO_ARGS();
         onRecv.Unref(env);
-        return VOID;
     }
 };
 
-Napi::FunctionReference* Socket::constructor = new Napi::FunctionReference;
+Napi::FunctionReference* Socket::constructor = nullptr;
 
 CLASS_INIT_IMPL(Socket)
 {
-    auto func = CLASS_DEFINE(
+    auto SocketClass = CLASS_DEFINE(
         Socket,
         { CLASS_INSTANCE_METHOD(Socket, send),
           CLASS_INSTANCE_METHOD(Socket, bind),
@@ -71,9 +69,9 @@ CLASS_INIT_IMPL(Socket)
           CLASS_INSTANCE_METHOD(Socket, ref),
           CLASS_INSTANCE_METHOD(Socket, unref) });
 
-    *constructor = Napi::Persistent(func);
+    CLASS_SET_CONSTRUCTOR(SocketClass);
 
-    exports["UDP"] = func;
+    EXPORT(UDP, SocketClass);
     return exports;
 }
 
@@ -81,7 +79,7 @@ void lwip_recv_cb(void* arg, struct udp_pcb* pcb, struct pbuf* p, const ip_addr_
 {
     auto thiz = reinterpret_cast<Socket*>(arg);
 
-    recv_data* rd = new recv_data { };
+    recv_data* rd = new recv_data {};
     rd->p = p;
     rd->port = port;
     ipaddr_ntoa_r(addr, rd->addr, ZTS_IP_MAX_STR_LEN);
@@ -114,9 +112,10 @@ void tsfnOnRecv(TSFN_ARGS, nullptr_t* ctx, recv_data* rd)
 
 /**
  * @param ipv6 { bool } sets the type of the udp socket
- * @param recvCallback { (data: Buffer, addr: string, port: number)=>void } called when receiving data
+ * @param recvCallback { (data: Buffer, addr: string, port: number)=>void }
+ * called when receiving data
  */
-CONSTRUCTOR_IMPL(Socket)
+Socket::CONSTRUCTOR(Socket)
 {
     NB_ARGS(2);
     bool ipv6 = ARG_BOOLEAN(0);
@@ -131,54 +130,52 @@ CONSTRUCTOR_IMPL(Socket)
     });
 }
 
-CLASS_METHOD_IMPL(Socket, send)
+METHOD(Socket::send)
 {
-    NB_ARGS(4);
+    NB_ARGS(3);
     auto data = ARG_UINT8ARRAY(0);
     std::string addr = ARG_STRING(1);
     int port = ARG_NUMBER(2);
-    auto callback = ARG_FUNC(3);
-
-    auto dataRef = NEW_REF_UINT8ARRAY(data);
-    auto onSent = TSFN_ONCE(
-        callback,
-        "udpOnSent",
-        /* unref data when sending complete */ { delete dataRef; });
-    auto len = data.ByteLength();
-    auto buffer = data.Data();
 
     ip_addr_t ip_addr;
     if (port)
         ipaddr_aton(addr.c_str(), &ip_addr);
 
-    typed_tcpip_callback([this, onSent, port, len, buffer, ip_addr]() {
-        struct pbuf* p = pbuf_alloc(PBUF_TRANSPORT, len, PBUF_REF);
-        p->payload = buffer;
+    return async_run(env, [&](DeferredPromise promise) {
+        typed_tcpip_callback(tsfn_once(
+            env,
+            "UDP::Socket::send",
+            [this,
+             port,
+             ip_addr,
+             len = data.ByteLength(),
+             buffer = data.Data(),
+             dataRef = ref_uint8array(data),
+             promise]() {
+                struct pbuf* p = pbuf_alloc(PBUF_TRANSPORT, len, PBUF_REF);
+                p->payload = buffer;
 
-        auto err = port ? udp_sendto(this->pcb, p, &ip_addr, port) : udp_send(this->pcb, p);
+                auto err = port ? udp_sendto(this->pcb, p, &ip_addr, port) : udp_send(this->pcb, p);
 
-        onSent->BlockingCall([err](TSFN_ARGS) {
-            if (err != ERR_OK)
-                jsCallback.Call({ MAKE_ERROR("send error", { ERR_FIELD("code", NUMBER(err)); }).Value() });
-            else
-                jsCallback.Call({});
-        });
-        onSent->Release();
+                pbuf_free(p);
 
-        pbuf_free(p);
+                return [err, dataRef, promise](TSFN_ARGS) {
+                    dataRef->Reset();
+                    if (err != ERR_OK)
+                        promise->Reject(ERROR("send error", err).Value());
+                    else
+                        promise->Resolve(UNDEFINED);
+                };
+            }));
     });
-
-    return VOID;
 }
 
-CLASS_METHOD_IMPL(Socket, bind)
+METHOD(Socket::bind)
 {
-    NB_ARGS(3);
+    NB_ARGS(2);
     std::string addr = ARG_STRING(0);
     int port = ARG_NUMBER(1);
-    auto callback = ARG_FUNC(2);
 
-    auto bindCb = TSFN_ONCE(callback, "udpBindCb", );
     ip_addr_t ip_addr;
 
     if (addr.size() == 0)
@@ -186,44 +183,48 @@ CLASS_METHOD_IMPL(Socket, bind)
     else
         ipaddr_aton(addr.c_str(), &ip_addr);
 
-    typed_tcpip_callback([=]() {
-        auto err = udp_bind(pcb, &ip_addr, port);
+    return async_run(env, [&](DeferredPromise promise) {
+        typed_tcpip_callback(tsfn_once(env, "UDP::Socket::bind", [this, ip_addr, port, promise]() {
+            auto err = udp_bind(pcb, &ip_addr, port);
 
-        bindCb->BlockingCall([err](TSFN_ARGS) {
-            if (err != ERR_OK)
-                jsCallback.Call({ MAKE_ERROR("Bind error", { ERR_FIELD("code", NUMBER(err)); }).Value() });
-            else
-                jsCallback.Call({});
-        });
-        bindCb->Release();
+            return [err, promise](TSFN_ARGS) {
+                if (err != ERR_OK)
+                    promise->Reject(ERROR("Bind error", err).Value());
+                else
+                    promise->Resolve(UNDEFINED);
+            };
+        }));
     });
-
-    return VOID;
 }
 
-CLASS_METHOD_IMPL(Socket, close)
+METHOD(Socket::close)
 {
-    NB_ARGS(1);
-    auto callback = ARG_FUNC(0);
+    NO_ARGS();
 
-    if (pcb) {
-        auto onClose = TSFN_ONCE(callback, "udpOnClose", { this->onRecv.Abort(); });
+    return async_run(env, [&](DeferredPromise promise) {
+        if (pcb) {
+            auto old_pcb = pcb;
+            pcb = nullptr;
 
-        auto old_pcb = pcb;
-        typed_tcpip_callback([old_pcb, onClose]() {
-            udp_remove(old_pcb);
+            typed_tcpip_callback(tsfn_once(env, "UDP::Socket::close", [old_pcb, this, promise]() {
+                LWIP_ASSERT("pcb was null", old_pcb != nullptr);
+                udp_remove(old_pcb);
 
-            onClose->BlockingCall();
-            onClose->Release();
-        });
-
-        pcb = nullptr;
-    }
-
-    return VOID;
+                return [this, promise](TSFN_ARGS) {
+                    onRecv.Abort();
+                    promise->Resolve(UNDEFINED);
+                };
+            }));
+            pcb = nullptr;
+        }
+        else {
+            // TODO handle this differently?
+            promise->Resolve(UNDEFINED);
+        }
+    });
 }
 
-CLASS_METHOD_IMPL(Socket, address)
+METHOD(Socket::address)
 {
     NO_ARGS();
 
@@ -237,7 +238,7 @@ CLASS_METHOD_IMPL(Socket, address)
     });
 }
 
-CLASS_METHOD_IMPL(Socket, remoteAddress)
+METHOD(Socket::remoteAddress)
 {
     NO_ARGS();
 
@@ -251,40 +252,33 @@ CLASS_METHOD_IMPL(Socket, remoteAddress)
     });
 }
 
-CLASS_METHOD_IMPL(Socket, connect)
+METHOD(Socket::connect)
 {
-    NB_ARGS(3);
+    NB_ARGS(2);
 
     std::string address = ARG_STRING(0);
     int port = ARG_NUMBER(1);
-    auto callback = ARG_FUNC(2);
 
-    auto onConnect = TSFN_ONCE(callback, "udpConnectCb", );
     ip_addr_t addr;
     ipaddr_aton(address.c_str(), &addr);
 
-    typed_tcpip_callback([=]() {
-        auto err = udp_connect(pcb, &addr, port);
+    return async_run(env, [&](DeferredPromise promise) {
+        typed_tcpip_callback(tsfn_once(env, "UDP::Socket::connect", [this, addr, port, promise]() {
+            auto err = udp_connect(pcb, &addr, port);
 
-        onConnect->BlockingCall([err](TSFN_ARGS) {
-            if (err != ERR_OK)
-                jsCallback.Call({ MAKE_ERROR("connect error", { ERR_FIELD("code", NUMBER(err)); }).Value() });
-            else
-                jsCallback.Call({});
-        });
-        onConnect->Release();
+            return [err, promise](TSFN_ARGS) {
+                if (err != ERR_OK)
+                    promise->Reject(ERROR("Connect error", err).Value());
+                else
+                    promise->Resolve(UNDEFINED);
+            };
+        }));
     });
-
-    return VOID;
 }
 
-CLASS_METHOD_IMPL(Socket, disconnect)
+VOID_METHOD(Socket::disconnect)
 {
-    NO_ARGS();
-
-    typed_tcpip_callback([=]() { udp_disconnect(pcb); });
-
-    return VOID;
+    typed_tcpip_callback([pcb = this->pcb]() { udp_disconnect(pcb); });
 }
 
 }   // namespace UDP

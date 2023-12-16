@@ -80,10 +80,10 @@ class Socket extends EventEmitter {
 
     if (callback) this.once("listening", () => callback());
 
-    this.internal.bind(address, port, (err) => {
-      if (err) this.emit("error", err);
-      else this.emit("listening");
-    });
+    this.internal
+      .bind(address, port)
+      .then(() => this.emit("listening"))
+      .catch((reason) => this.handleError()(reason));
   }
 
   send(
@@ -100,21 +100,20 @@ class Socket extends EventEmitter {
     }
     if (!address) address = this.ipv6 ? "::1" : "127.0.0.1";
 
-    const cb = this.bound
-      ? this.handleError(callback)
-      : (err?: NativeError) => {
-          if (!err) this.emit("listening");
-
-          this.handleError(callback)(err);
-        };
-    this.internal.send(msg, address, port, cb);
+    this.internal
+      .send(msg, address, port)
+      .then(() => {
+        if (!this.bound) this.emit("listening");
+        this.handleError(callback)();
+      })
+      .catch((reason) => this.handleError(callback)(reason));
   }
 
   close(callback?: () => void) {
     this.checkClosed();
     this.closed = true;
     if (callback) this.on("close", callback);
-    this.internal.close(() => this.emit("close"));
+    this.internal.close().then(() => this.emit("close"));
   }
 
   connect(
@@ -126,13 +125,14 @@ class Socket extends EventEmitter {
     if (!port) throw Error("Port must be specified");
     if (!address) address = this.ipv6 ? "::1" : "127.0.0.1";
 
-    this.internal.connect(address, port, (err?: NativeError) => {
-      if (err) this.handleError(callback)(err);
-      else {
+    this.internal
+      .connect(address, port)
+      .then(() => {
+        // if connect fails, shouldn't reuse callback for later try, so only add as listener here
         if (callback) this.once("connect", callback);
         this.emit("connect");
-      }
-    });
+      })
+      .catch((reason) => this.handleError(callback)(reason));
   }
 
   disconnect() {
