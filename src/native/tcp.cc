@@ -27,10 +27,13 @@ CLASS(Socket)
         this->pcb = pcb;
     }
 
-    tcp_pcb* pcb = nullptr;
     Napi::ThreadSafeFunction emit;
 
+    void emit_close();
+
   private:
+    tcp_pcb* pcb = nullptr;
+
     VOID_METHOD(connect);
     VOID_METHOD(init);
     METHOD(send);
@@ -56,13 +59,20 @@ CLASS_INIT_IMPL(Socket)
     return exports;
 }
 
+void Socket::emit_close()
+{
+    emit.BlockingCall([](TSFN_ARGS) { jsCallback.Call({ STRING("close") }); });
+    emit.Release();
+}
+
 err_t tcp_receive_cb(void* arg, struct tcp_pcb* tpcb, struct pbuf* p, err_t err)
 {
     auto thiz = reinterpret_cast<Socket*>(arg);
     if (thiz->emit.Acquire() != napi_ok) {
         if (p)
             ts_pbuf_free(p);
-        return ERR_OK;   // TODO: other return code?
+        return ERR_OK;   // TODO: other return code? ack the buf immediately? will we ever get here? (if destroy
+                         // implemented maybe)
     }
     thiz->emit.BlockingCall([p](TSFN_ARGS) {
         if (! p) {
@@ -78,6 +88,10 @@ err_t tcp_receive_cb(void* arg, struct tcp_pcb* tpcb, struct pbuf* p, err_t err)
         }
     });
     thiz->emit.Release();
+    if (tpcb->state == TIME_WAIT) {
+        // tx shutdown and FIN received
+        thiz->emit_close();
+    }
     return ERR_OK;
 }
 
@@ -91,14 +105,15 @@ err_t tcp_sent_cb(void* arg, struct tcp_pcb* tpcb, u16_t len)
 void tcp_err_cb(void* arg, err_t err)
 {
     auto thiz = reinterpret_cast<Socket*>(arg);
-    thiz->pcb = nullptr;   // TODO: cleanup tsfn properly
+    thiz->set_pcb(nullptr);   // TODO: cleanup tsfn properly
+
+    if (err == ERR_CLSD) {
+        thiz->emit_close();
+        return;
+    }
+
     thiz->emit.BlockingCall([err](TSFN_ARGS) {
-        if (err == ERR_CLSD) {
-            jsCallback.Call({ STRING("close") });
-        }
-        else {
-            jsCallback.Call({ STRING("error"), MAKE_ERROR("TCP error", ERR_FIELD("code", NUMBER(err))).Value() });
-        }
+        jsCallback.Call({ STRING("error"), MAKE_ERROR("TCP error", ERR_FIELD("code", NUMBER(err))).Value() });
     });
     thiz->emit.Release();
 }
@@ -214,6 +229,18 @@ CLASS_INIT_IMPL(Server)
     return exports;
 }
 
+Server::CONSTRUCTOR(Server)
+{
+    NB_ARGS(1);
+    auto onConnection = ARG_FUNC(0);
+    this->onConnection = Napi::ThreadSafeFunction::New(env, onConnection, "TCP::onConnection", 0, 1);
+
+    typed_tcpip_callback([this]() {
+        this->pcb = tcp_new();
+        tcp_arg(this->pcb, this);
+    });
+}
+
 err_t tcp_accept_cb(void* arg, tcp_pcb* new_pcb, err_t err)
 {
     auto thiz = reinterpret_cast<Server*>(arg);
@@ -237,18 +264,6 @@ err_t tcp_accept_cb(void* arg, tcp_pcb* new_pcb, err_t err)
     });
 
     return ERR_OK;
-}
-
-Server::CONSTRUCTOR(Server)
-{
-    NB_ARGS(1);
-    auto onConnection = ARG_FUNC(0);
-    this->onConnection = Napi::ThreadSafeFunction::New(env, onConnection, "TCP::onConnection", 0, 1);
-
-    typed_tcpip_callback([this]() {
-        this->pcb = tcp_new();
-        tcp_arg(this->pcb, this);
-    });
 }
 
 METHOD(Server::listen)

@@ -1,11 +1,17 @@
 import { setTimeout } from "timers/promises";
 
+// import net = require("node:net");
+
 import { events, net, startNode, zts } from "../index";
 import * as util from "node:util";
 import assert = require("node:assert");
 import { fork } from "node:child_process";
 
 async function test() {
+  setTimeout(30_000, undefined, { ref: false }).then(() =>
+    assert(false, "Test took too long"),
+  );
+
   const payload = "abcdefgh";
 
   const server = process.argv.length < 3;
@@ -15,9 +21,11 @@ This test starts a server, opens a client in a child process that connects to th
 (Not the case right now.)
     `);
 
+  const oldLog = console.log;
   const log = (...args: unknown[]) => {
-    console.log(server ? "S:    " : "   C: ", ...args);
+    oldLog(server ? "S:    " : "   C: ", ...args);
   };
+  console.log = log;
 
   log(`Process started with args: ${process.argv}`);
 
@@ -61,7 +69,10 @@ This test starts a server, opens a client in a child process that connects to th
         socket.end(data);
       });
       socket.on("end", () => log("socket ended"));
-      socket.on("error", () => log("socket error"));
+      socket.on("close", () => log("socket closed"));
+      socket.on("error", (error) => {
+        throw error;
+      });
     });
     server.listen(port, "::", () => {
       log(`Listening, address: ${util.format(server.address())}`);
@@ -70,6 +81,7 @@ This test starts a server, opens a client in a child process that connects to th
     // server.on("error", (err)=>assert(false, `Server errored: ${util.format(err)}`));
 
     const child = fork(__filename, [address]);
+    console.log(child.pid);
     child.on("exit", async (code) => {
       log(`Client exited with code ${code}`);
       assert.strictEqual(code, 0);
@@ -92,7 +104,7 @@ This test starts a server, opens a client in a child process that connects to th
       let result = "";
       s.on("data", (data) => (result += data.toString()));
       s.on("end", () => {
-        log(`Received data: ${result}`);
+        log(`ENDED, total received data: ${result}`);
         assert.strictEqual(result, payload);
       });
 

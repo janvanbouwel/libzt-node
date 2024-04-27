@@ -19,6 +19,7 @@ planet
 devicemap
 controller.d
 networks.d
+peers.d
 roots
 tap.kext
 zerotier-cli

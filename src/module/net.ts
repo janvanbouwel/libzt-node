@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import { nativeSocket, zts } from "./zts";
+import { NativeError, SocketErrors, nativeSocket, zts } from "./zts";
 import { Duplex, PassThrough } from "node:stream";
 
 export class Server extends EventEmitter {
@@ -14,6 +14,7 @@ export class Server extends EventEmitter {
   ) {
     super();
     this.once("close", () => (this.connAmount = -1));
+    this.once("listening", () => (this.listening = true));
     if (connectionListener) this.on("connection", connectionListener);
 
     this.internal = new zts.Server((error, socket) => {
@@ -89,7 +90,6 @@ class Socket extends Duplex {
         });
       } else {
         // other side closed the connection
-        // console.log("FIN received");
         this.receiver.end();
         if (this.readableLength === 0) this.resume();
       }
@@ -102,8 +102,16 @@ class Socket extends Duplex {
       // TODO: is this actually necessary?
       // console.log("internal socket closed");
     });
-    this.internalEvents.on("error", (error) => {
+    this.internalEvents.on("error", (error: NativeError) => {
+      if (error.code == SocketErrors.ERR_ABRT) {
+        console.log("socket abort");
+        this.destroy(error);
+        return;
+      }
+
+      // TODO
       console.log(error);
+
       if (!this.emit("error", error))
         setImmediate(() => {
           throw error;
@@ -173,10 +181,9 @@ class Socket extends Duplex {
   }
 
   _final(callback: (error?: Error | null | undefined) => void): void {
-    // console.log("final called, i.e. shutdown_wr");
+    this.internalEvents.once("close", callback);
+
     this.internal.shutdown_wr();
-    // TODO: probably should only go to callback once pcb has confirmed close
-    callback();
   }
 
   connect(port: number, address: string) {
