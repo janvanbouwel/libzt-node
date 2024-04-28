@@ -182,7 +182,7 @@ METHOD(Socket::bind)
         typed_tcpip_callback(tsfn_once<err_t>(
             env,
             "UDP::Socket::bind",
-            [pcb = this->pcb, ip_addr, port]() { return udp_bind(pcb, &ip_addr, port); },
+            [this, ip_addr, port]() { return udp_bind(this->pcb, &ip_addr, port); },
             [promise](TSFN_ARGS, auto err) {
                 if (err != ERR_OK)
                     promise->Reject(ERROR("Bind error", err).Value());
@@ -208,8 +208,8 @@ METHOD(Socket::close)
                     LWIP_ASSERT("pcb was null", old_pcb != nullptr);
                     udp_remove(old_pcb);
                 },
-                [onRecv = this->onRecv, promise](TSFN_ARGS) {
-                    onRecv.Abort();
+                [this, promise](TSFN_ARGS) {
+                    this->onRecv.Abort();
                     promise->Resolve(UNDEFINED);
                 }));
             pcb = nullptr;
@@ -263,7 +263,7 @@ METHOD(Socket::connect)
         typed_tcpip_callback(tsfn_once<err_t>(
             env,
             "UDP::Socket::connect",
-            [pcb = this->pcb, addr, port]() { return udp_connect(pcb, &addr, port); },
+            [this, addr, port]() { return udp_connect(this->pcb, &addr, port); },
             [promise](TSFN_ARGS, auto err) {
                 if (err != ERR_OK)
                     promise->Reject(ERROR("Connect error", err).Value());
