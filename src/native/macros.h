@@ -133,6 +133,11 @@ DeferredPromise create_promise(Napi::Env env)
     return std::make_shared<Napi::Promise::Deferred>(env);
 }
 
+/**
+ * Creates a Napi promise and immediately passes it to the provided function which has the responsibilty to either
+ * resolve or reject it (immediately or after work in a (different) thread). Returns the actual javascript promise
+ * object.
+ */
 Napi::Promise async_run(Napi::Env env, std::function<void(DeferredPromise)> exec)
 {
     auto promise = create_promise(env);
@@ -142,6 +147,10 @@ Napi::Promise async_run(Napi::Env env, std::function<void(DeferredPromise)> exec
     return promise->Promise();
 }
 
+/**
+ * Returns a callable which, when executed, first executes the provided function `threaded` in the current thread, and
+ * then passes the result to `js_callback` in the addon's main thread.
+ */
 template <typename T>
 std::function<void()>
 tsfn_once(Napi::Env env, std::string name, std::function<T()> threaded, std::function<void(TSFN_ARGS, T)> js_callback)
@@ -158,6 +167,10 @@ tsfn_once(Napi::Env env, std::string name, std::function<T()> threaded, std::fun
     };
 }
 
+/**
+ * Returns a callable which, when executed, first executes the provided function `threaded` in the current thread, and
+ * then executes `js_callback` in the addon's main thread.
+ */
 std::function<void()> tsfn_once_void(
     Napi::Env env,
     std::string name,
