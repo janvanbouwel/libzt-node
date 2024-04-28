@@ -1,47 +1,62 @@
 # Nodejs libzt binding
 
-## Current features
+Idiomatic Node.js bindings for [libzt](https://github.com/zerotier/libzt), intended to be a drop-in replacement for `node:net` and `node:dgram`.
 
-- Typescript
-- Subset of ZeroTierSockets.h directly accessible
-- non-blocking TCP using lwip callback api (still WIP)
-- Socket and Server for tcp, analogous to nodejs "net" (can be used for tls, http(s))
-- non-blocking UDP using lwip callback api
-- Linux only
+This project is very early access, please open a github issue for bugs or feature requests.
 
-## Todo
+## Installation
 
-- Nicer wrapper around Node and Network
-- More features from ZeroTierSockets.h
-- Configure macos and windows (might work already, not tested)
-
-## Building from source
-
-### Build
+Prebuild binaries are included with the npm package for a number of platforms, so installing should be as easy as:
 
 ```bash
-npm ci                  (rerun after changes to native code)
-npm run build           (rerun after changes to typescript)
-npm test (TODO)
+npm install libzt
 ```
 
-### Build Debug
+## Usage
 
-```bash
-npm ci --ignore-scripts
-npm run compile -- -D   (rerun after changes to native code)
-npm run build           (rerun after changes to typescript)
-npm test (TODO)
+### Initialisation
+
+ZeroTier has to be initialised before it can be used. This API is very WIP. See also the official [libzt docs](https://docs.zerotier.com/sockets).
+
+```ts
+import { startNode, zts } from "libzt";
+
+// initialises node from storage, new id will be created if path doesn't exist
+startNode("path/to/id", event => console.log(event));
+
+while (!zts.node_is_online()) { // will be made asynchronous in the future
+    await setTimeout(50); 
+}
+console.log(zts.node_get_id()); // the node's id
+
+const nwid = "ff0000ffff000000" // Zerotier network id
+zts.net_join(nwid);
+
+while (!zts.net_transport_is_ready(nwid)) {
+    await setTimeout(50);
+}
+
+// get assigned address, second argument is true for ipv6
+const address = zts.addr_get_str(nwid, true);
 ```
 
-## Running
+### Sockets
 
-Test source code can be found in `./src/test/`.
-Run with no arguments to get description.
+As the end goal is feature parity with `node:net` and `node:dgram`, it should ideally be as simple as replacing
 
-```bash
-node dist/test/tcp-example.js
-
-node dist/test/newudptest.js
-node dist/test/newtcptest.js
+```ts
+import net from "node:net";
+import dgram from "node:dgram";
 ```
+
+with
+
+```ts
+import { net, dgram } from "libzt";
+```
+
+Using ZeroTier sockets with other modules is also possible. For example for `node:http`, [inject a connection into a server using `httpServer.emit("connection", socket)`](https://nodejs.org/docs/latest/api/http.html#event-connection) and [use the `createConnection` option when creating a request](https://nodejs.org/docs/latest/api/http.html#httprequesturl-options-callback).
+
+## License
+
+The code for these bindings is licensed under the [ISC license](LICENSE). However, ZeroTier and libzt are licensed under the [BSL version 1.1](https://github.com/zerotier/libzt/blob/main/README.md#licensing) which limits certain commercial uses. See also [here](ext/libzt/ext/THIRDPARTY.txt) licenses for other included third party code.

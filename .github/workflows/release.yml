@@ -172,6 +172,6 @@ jobs:
           path: prebuilds
       - run: npm run build
       - run: npm test
-      - run: npm publish --access public --dry-run
+      - run: npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.npm_token }}
