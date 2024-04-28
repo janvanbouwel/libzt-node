@@ -1,7 +1,13 @@
 {
   "name": "libzt",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Idiomatic node bindings for libzt.",
+  "keywords": [
+    "zerotier",
+    "libzt",
+    "p2p",
+    "vpn"
+  ],
   "binary": {
     "napi_versions": [
       5
