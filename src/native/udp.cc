@@ -178,7 +178,7 @@ METHOD(Socket::bind)
     else
         ipaddr_aton(addr.c_str(), &ip_addr);
 
-    return async_run(env, [&](DeferredPromise promise) {
+    return async_run(env, [&, this](DeferredPromise promise) {
         typed_tcpip_callback(tsfn_once<err_t>(
             env,
             "UDP::Socket::bind",
@@ -196,7 +196,7 @@ METHOD(Socket::close)
 {
     NO_ARGS();
 
-    return async_run(env, [&](DeferredPromise promise) {
+    return async_run(env, [&, this](DeferredPromise promise) {
         if (pcb) {
             auto old_pcb = pcb;
             pcb = nullptr;
@@ -259,7 +259,7 @@ METHOD(Socket::connect)
     ip_addr_t addr;
     ipaddr_aton(address.c_str(), &addr);
 
-    return async_run(env, [&](DeferredPromise promise) {
+    return async_run(env, [&, this](DeferredPromise promise) {
         typed_tcpip_callback(tsfn_once<err_t>(
             env,
             "UDP::Socket::connect",
