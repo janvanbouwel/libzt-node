@@ -6,10 +6,10 @@
 #include <napi.h>
 #include <sstream>
 
-#define THROW_ERROR(ERR, FUN)                                                                                                \
+#define THROW_ERROR(ERR, FUN)                                                                                          \
     do {                                                                                                               \
         if (ERR < 0) {                                                                                                 \
-            auto error = ERROR("Error during " FUN " call.", ERR);                \
+            auto error = ERROR("Error during " FUN " call.", ERR);                                                     \
             throw error;                                                                                               \
         }                                                                                                              \
     } while (0)
@@ -23,6 +23,15 @@ VOID_METHOD(init_from_storage)
 
     int err = zts_init_from_storage(std::string(configPath).c_str());
     THROW_ERROR(err, "init_from_storage");
+}
+
+VOID_METHOD(init_from_memory)
+{
+    NB_ARGS(1);
+    auto key = ARG_UINT8ARRAY(0);
+
+    int err = zts_init_from_memory((char*)key.Data(), key.ByteLength());
+    THROW_ERROR(err, "init_from_memory");
 }
 
 Napi::ThreadSafeFunction event_callback;
@@ -161,6 +170,7 @@ INIT_ADDON(zts)
 {
     // init
     EXPORT_FUNCTION(init_from_storage);
+    EXPORT_FUNCTION(init_from_memory);
     EXPORT_FUNCTION(init_set_event_handler);
     // node
     EXPORT_FUNCTION(node_start);

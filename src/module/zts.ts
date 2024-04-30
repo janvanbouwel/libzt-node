@@ -50,6 +50,7 @@ declare class UDP {
 
 type ZTS = {
   init_from_storage(path: string): void;
+  init_from_memory(key: Buffer): void;
   init_set_event_handler(callback: (event: number) => void): void;
 
   node_start(): void;
