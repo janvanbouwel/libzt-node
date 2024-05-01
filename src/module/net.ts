@@ -58,7 +58,7 @@ export class Server extends EventEmitter {
 }
 
 export function createServer(
-  connectionListener?: (socket: Socket) => void,
+  connectionListener?: (socket: Socket) => void
 ): Server {
   return new Server({}, connectionListener);
 }
@@ -81,7 +81,7 @@ class Socket extends Duplex {
 
   constructor(
     options: node_net.SocketConstructorOpts,
-    internal?: nativeSocket,
+    internal?: nativeSocket
   ) {
     super({
       allowHalfOpen: options.allowHalfOpen ?? false,
@@ -125,7 +125,7 @@ class Socket extends Duplex {
       this.destroy(error);
     });
     this.internal.init((event: string, ...args: unknown[]) =>
-      this.internalEvents.emit(event, ...args),
+      this.internalEvents.emit(event, ...args)
     );
 
     // setup passthrough for receiving data
@@ -139,8 +139,6 @@ class Socket extends Duplex {
     this.receiver.pause();
   }
 
-
-
   _read() {
     this.receiver.resume();
   }
@@ -148,7 +146,7 @@ class Socket extends Duplex {
   _write(
     chunk: Buffer,
     _: unknown,
-    callback: (error?: Error | null) => void,
+    callback: (error?: Error | null) => void
   ): void {
     if (!this.connected)
       this.once("connect", () => this.realWrite(chunk, callback));
@@ -157,11 +155,11 @@ class Socket extends Duplex {
 
   private async realWrite(
     chunk: Buffer,
-    callback: (error?: Error | null) => void,
+    callback: (error?: Error | null) => void
   ): Promise<void> {
     const currentWritten = this.bytesWritten;
     const length = await this.internal.send(chunk);
-    
+
     // everything was written out
     if (length === chunk.length) {
       callback();
@@ -192,7 +190,7 @@ class Socket extends Duplex {
 
   connect(
     options: node_net.TcpSocketConnectOpts,
-    connectionListener?: () => void,
+    connectionListener?: () => void
   ): this {
     if (this.connected) throw Error("Already connected");
 
@@ -204,43 +202,46 @@ class Socket extends Duplex {
 
 function _createConnection(
   options: node_net.TcpNetConnectOpts,
-  connectionListener?: () => void,
+  connectionListener?: () => void
 ): Socket {
   const socket = new Socket(options);
 
-  process.nextTick(() => socket.connect(options), connectionListener);
+  process.nextTick(() => {
+    socket.connect(options, connectionListener);
+  });
 
   return socket;
 } // class Socket
 
 export function createConnection(
   options: node_net.NetConnectOpts,
-  connectionListener?: () => void,
+  connectionListener?: () => void
 ): Socket;
 export function createConnection(
   port: number,
   host?: string,
-  connectionListener?: () => void,
+  connectionListener?: () => void
 ): Socket;
 export function createConnection(
   path: string,
-  connectionListener?: () => void,
+  connectionListener?: () => void
 ): Socket;
 export function createConnection(
   port: number | string | node_net.NetConnectOpts,
   host?: string | (() => void),
-  connectionListener?: () => void,
+  connectionListener?: () => void
 ): Socket {
   if (typeof port === "string") throw Error("Only TCP sockets are possible");
   if (typeof port === "number") {
     return typeof host === "string"
       ? _createConnection({ port, host }, connectionListener)
-      : _createConnection({ port }, connectionListener);
-  }
-  if (typeof host === "string") throw Error("Argument");
-  if (!("port" in port)) throw Error("Only TCP sockets are possible");
+      : _createConnection({ port }, host);
+  } else { // port is object
+    if (typeof host === "string") throw Error("Argument");
+    if (!("port" in port)) throw Error("Only TCP sockets are possible");
 
-  return _createConnection(port, host);
+    return _createConnection(port, host);
+  }
 }
 
 export const connect = createConnection;
