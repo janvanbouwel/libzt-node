@@ -1,6 +1,6 @@
 import { EventEmitter } from "node:events";
-import { NativeError, SocketErrors, nativeSocket, zts } from "./zts";
-import { Duplex, PassThrough } from "node:stream";
+import { NativeError, nativeSocket, zts } from "./zts";
+import { Duplex, DuplexOptions, PassThrough } from "node:stream";
 
 import * as node_net from "node:net";
 
@@ -79,15 +79,24 @@ class Socket extends Duplex {
   // internal socket writes to receiver, receiver writes to duplex (which is read by client application)
   private receiver = new PassThrough();
 
-  constructor(options: { allowHalfOpen?: boolean }, internal?: nativeSocket) {
+  constructor(
+    options: node_net.SocketConstructorOpts,
+    internal?: nativeSocket,
+  ) {
     super({
       allowHalfOpen: options.allowHalfOpen ?? false,
-    });
+      readable: options.readable,
+      writable: options.writable,
+    } as DuplexOptions);
 
     if (internal) this.connected = true;
     this.internal = internal ?? new zts.Socket();
 
     // events from native socket
+    this.internalEvents.on("connect", () => {
+      this.connected = true;
+      this.emit("connect");
+    });
     this.internalEvents.on("data", (data?: Buffer) => {
       if (data) {
         // console.log(`received ${data.length}`);
@@ -112,19 +121,8 @@ class Socket extends Duplex {
       // console.log("internal socket closed");
     });
     this.internalEvents.on("error", (error: NativeError) => {
-      if (error.code == SocketErrors.ERR_ABRT) {
-        console.log("socket abort");
-        this.destroy(error);
-        return;
-      }
-
-      // TODO
       console.log(error);
-
-      if (!this.emit("error", error))
-        setImmediate(() => {
-          throw error;
-        });
+      this.destroy(error);
     });
     this.internal.init((event: string, ...args: unknown[]) =>
       this.internalEvents.emit(event, ...args),
@@ -141,17 +139,7 @@ class Socket extends Duplex {
     this.receiver.pause();
   }
 
-  _construct(callback: (error?: Error | null | undefined) => void): void {
-    if (this.connected) {
-      callback();
-      return;
-    } else {
-      this.internalEvents.once("connect", () => {
-        this.connected = true;
-        callback();
-      });
-    }
-  }
+
 
   _read() {
     this.receiver.resume();
@@ -162,7 +150,9 @@ class Socket extends Duplex {
     _: unknown,
     callback: (error?: Error | null) => void,
   ): void {
-    this.realWrite(chunk, callback);
+    if (!this.connected)
+      this.once("connect", () => this.realWrite(chunk, callback));
+    else this.realWrite(chunk, callback);
   }
 
   private async realWrite(
@@ -171,7 +161,7 @@ class Socket extends Duplex {
   ): Promise<void> {
     const currentWritten = this.bytesWritten;
     const length = await this.internal.send(chunk);
-    // console.log(`written ${length}`);
+    
     // everything was written out
     if (length === chunk.length) {
       callback();
@@ -190,9 +180,14 @@ class Socket extends Duplex {
   }
 
   _final(callback: (error?: Error | null | undefined) => void): void {
-    this.internalEvents.once("close", callback);
+    if (this.connected) {
+      this.internalEvents.once("close", callback);
 
-    this.internal.shutdown_wr();
+      this.internal.shutdown_wr();
+    } else {
+      this.internal.shutdown_wr();
+      callback();
+    }
   }
 
   connect(
@@ -216,7 +211,7 @@ function _createConnection(
   process.nextTick(() => socket.connect(options), connectionListener);
 
   return socket;
-}
+} // class Socket
 
 export function createConnection(
   options: node_net.NetConnectOpts,
