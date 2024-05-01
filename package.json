@@ -1,6 +1,6 @@
 {
   "name": "libzt",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Idiomatic node bindings for libzt.",
   "keywords": [
     "zerotier",

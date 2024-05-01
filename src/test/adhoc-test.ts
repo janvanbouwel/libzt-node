@@ -2,7 +2,7 @@ import { setTimeout } from "timers/promises";
 
 // import net = require("node:net");
 
-import { events, net, startNode, zts } from "../index";
+import { events, net, startNodeAndJoinNet, zts } from "../index";
 import * as util from "node:util";
 import assert = require("node:assert");
 import { fork } from "node:child_process";
@@ -31,31 +31,17 @@ This test starts a server, opens a client in a child process that connects to th
 
   const port = 5000;
 
-  startNode(`./id/adhoc-test/${server ? "server" : "client"}`, (event) =>
-    log(
-      `       e: ${event}, ${events[event]
-        .replace("ZTS_EVENT_", "")
-        .toLowerCase()}`,
-    ),
-  );
-
-  while (!zts.node_is_online()) {
-    await setTimeout(50);
-  }
-
-  log("Node online");
-
   const nwid = "ff0000ffff000000";
-  zts.net_join(nwid);
-
-  while (!zts.net_transport_is_ready(nwid)) {
-    await setTimeout(50);
-  }
-  log("Network joined");
-
-  assert.doesNotThrow(() => zts.addr_get_str(nwid, true));
-  const address = zts.addr_get_str(nwid, true);
-
+  const address = await startNodeAndJoinNet(
+    `./id/adhoc-test/${server ? "server" : "client"}`,
+    nwid,
+    (event) =>
+      log(
+        `       e: ${event}, ${events[event]
+          .replace("ZTS_EVENT_", "")
+          .toLowerCase()}`,
+      ),
+  );
   log(`Address: ${address}`);
 
   if (server) {

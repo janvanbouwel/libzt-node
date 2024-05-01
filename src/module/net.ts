@@ -2,8 +2,11 @@ import { EventEmitter } from "node:events";
 import { NativeError, SocketErrors, nativeSocket, zts } from "./zts";
 import { Duplex, PassThrough } from "node:stream";
 
+import * as node_net from "node:net";
+
 export class Server extends EventEmitter {
   private listening = false;
+
   private closed = false;
   private internal;
   private connAmount = 0;
@@ -52,6 +55,12 @@ export class Server extends EventEmitter {
       if (this.connAmount === 0) this.emit("close");
     });
   }
+}
+
+export function createServer(
+  connectionListener?: (socket: Socket) => void,
+): Server {
+  return new Server({}, connectionListener);
 }
 
 /**
@@ -186,24 +195,57 @@ class Socket extends Duplex {
     this.internal.shutdown_wr();
   }
 
-  connect(port: number, address: string) {
+  connect(
+    options: node_net.TcpSocketConnectOpts,
+    connectionListener?: () => void,
+  ): this {
     if (this.connected) throw Error("Already connected");
-    this.internalEvents.on("connect", () => {
-      this.emit("connect");
-    });
-    this.internal.connect(port, address);
-  }
-}
 
-export function connect(
-  port: number,
-  address: string,
+    this.internal.connect(options.port, options.host ?? "127.0.0.1");
+    if (connectionListener) this.once("connect", connectionListener);
+    return this;
+  }
+} // class Socket
+
+function _createConnection(
+  options: node_net.TcpNetConnectOpts,
   connectionListener?: () => void,
 ): Socket {
-  const socket = new Socket({});
+  const socket = new Socket(options);
 
-  if (connectionListener) socket.on("connect", () => connectionListener());
-  process.nextTick(() => socket.connect(port, address));
+  process.nextTick(() => socket.connect(options), connectionListener);
 
   return socket;
 }
+
+export function createConnection(
+  options: node_net.NetConnectOpts,
+  connectionListener?: () => void,
+): Socket;
+export function createConnection(
+  port: number,
+  host?: string,
+  connectionListener?: () => void,
+): Socket;
+export function createConnection(
+  path: string,
+  connectionListener?: () => void,
+): Socket;
+export function createConnection(
+  port: number | string | node_net.NetConnectOpts,
+  host?: string | (() => void),
+  connectionListener?: () => void,
+): Socket {
+  if (typeof port === "string") throw Error("Only TCP sockets are possible");
+  if (typeof port === "number") {
+    return typeof host === "string"
+      ? _createConnection({ port, host }, connectionListener)
+      : _createConnection({ port }, connectionListener);
+  }
+  if (typeof host === "string") throw Error("Argument");
+  if (!("port" in port)) throw Error("Only TCP sockets are possible");
+
+  return _createConnection(port, host);
+}
+
+export const connect = createConnection;
