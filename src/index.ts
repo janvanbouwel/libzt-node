@@ -8,7 +8,7 @@ import { zts } from "./module/zts";
  */
 export function startNode(
   path?: string,
-  eventHandler?: (event: number) => void
+  eventHandler?: (event: number) => void,
 ) {
   if (path) zts.init_from_storage(path);
   if (eventHandler) zts.init_set_event_handler(eventHandler);
@@ -18,15 +18,15 @@ export function startNode(
 
 /**
  * Starts zt node, joins a network and returns ipv6 or else ipv4 address.
- * @param path 
- * @param nwid 
- * @param eventHandler 
- * @returns 
+ * @param path
+ * @param nwid
+ * @param eventHandler
+ * @returns
  */
 export async function startNodeAndJoinNet(
   path: string | undefined,
   nwid: string,
-  eventHandler?: (event: number) => void
+  eventHandler?: (event: number) => void,
 ): Promise<string> {
   startNode(path, eventHandler);
   while (!zts.node_is_online()) {
@@ -38,9 +38,9 @@ export async function startNodeAndJoinNet(
   }
 
   try {
-    return zts.addr_get_str(nwid, true)
+    return zts.addr_get_str(nwid, true);
   } catch (error) {
-    return zts.addr_get_str(nwid, false)
+    return zts.addr_get_str(nwid, false);
   }
 }
 

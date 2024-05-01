@@ -9,7 +9,7 @@ import { fork } from "node:child_process";
 
 async function test() {
   setTimeout(30_000, undefined, { ref: false }).then(() =>
-    assert(false, "Test took too long")
+    assert(false, "Test took too long"),
   );
 
   const payload = "abcdefgh";
@@ -39,8 +39,8 @@ This test starts a server, opens a client in a child process that connects to th
       log(
         `       e: ${event}, ${events[event]
           .replace("ZTS_EVENT_", "")
-          .toLowerCase()}`
-      )
+          .toLowerCase()}`,
+      ),
   );
   log(`Address: ${address}`);
 
