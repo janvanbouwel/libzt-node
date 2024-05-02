@@ -3,11 +3,11 @@ export interface ZtsError extends Error {
   errno?: number;
 }
 
-export interface NativeError extends Error {
+export interface InternalError extends Error {
   code?: SocketErrors;
 }
 
-export declare class nativeSocket {
+export declare class InternalSocket {
   constructor();
   init(emit: (event: string, ...args: unknown[]) => boolean): void;
   connect(port: number, address: string): void;
@@ -16,22 +16,17 @@ export declare class nativeSocket {
   shutdown_wr(): void;
 }
 
-declare class Server {
-  constructor(
-    onConnection: (
-      error: NativeError | undefined,
-      socket: nativeSocket,
-    ) => void,
-  );
-  listen(port: number, address: string): Promise<void>;
+export declare class InternalServer {
   address(): { port: number; address: string; family: "IPv6" | "IPv4" };
   close(): Promise<void>;
+  ref(): void;
+  unref(): void;
 }
 
 declare class UDP {
   constructor(
     ipv6: boolean,
-    recvCallback: (data: Buffer, addr: string, port: number) => void,
+    recvCallback: (data: Buffer, addr: string, port: number) => void
   );
 
   send(data: Uint8Array, addr: string, port: number): Promise<void>;
@@ -67,16 +62,20 @@ type ZTS = {
 
   UDP: new (
     ipv6: boolean,
-    recvCallback: (data: Buffer, addr: string, port: number) => void,
+    recvCallback: (data: Buffer, addr: string, port: number) => void
   ) => UDP;
 
-  Server: new (
-    onConnection: (
-      error: NativeError | undefined,
-      socket: nativeSocket,
-    ) => void,
-  ) => Server;
-  Socket: new () => nativeSocket;
+  Server: {
+    createServer(
+      port: number,
+      address: string,
+      onConnection: (
+        error: InternalError | undefined,
+        socket: InternalSocket
+      ) => void
+    ): Promise<InternalServer>;
+  };
+  Socket: new () => InternalSocket;
 };
 
 import * as loadBinding from "pkg-prebuilds";
@@ -84,7 +83,7 @@ import * as options from "../binding-options";
 export const zts = loadBinding<ZTS>(
   // project root
   `${__dirname}/../..`,
-  options,
+  options
 );
 
 export enum errors {

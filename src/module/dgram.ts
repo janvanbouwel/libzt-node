@@ -1,5 +1,5 @@
 import { EventEmitter } from "events";
-import { NativeError, zts } from "./zts";
+import { InternalError, zts } from "./zts";
 import { isIPv6 } from "net";
 
 interface UDPSocketEvents {
@@ -14,7 +14,7 @@ interface UDPSocketEvents {
     },
   ) => void;
   listening: () => void;
-  error: (err: NativeError) => void;
+  error: (err: InternalError) => void;
 }
 
 class Socket extends EventEmitter {
@@ -90,7 +90,7 @@ class Socket extends EventEmitter {
     msg: Buffer,
     port?: number,
     address?: string,
-    callback?: (err?: NativeError) => void,
+    callback?: (err?: InternalError) => void,
   ): void {
     this.checkClosed();
     if (this.connected) {
@@ -119,7 +119,7 @@ class Socket extends EventEmitter {
   connect(
     port: number,
     address: string,
-    callback?: (error?: NativeError) => void,
+    callback?: (error?: InternalError) => void,
   ) {
     this.checkClosed();
     if (!port) throw Error("Port must be specified");
@@ -141,7 +141,7 @@ class Socket extends EventEmitter {
     this.connected = false;
   }
 
-  private handleError(callback?: (err?: NativeError) => void) {
+  private handleError(callback?: (err?: InternalError) => void) {
     return (err?: Error) => {
       if (callback) callback(err);
       else {

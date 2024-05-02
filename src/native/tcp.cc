@@ -201,16 +201,48 @@ CLASS(Server)
     static Napi::FunctionReference* constructor;
 
     CLASS_INIT_DECL();
-    CONSTRUCTOR_DECL(Server);
+    CONSTRUCTOR(Server)
+    {
+    }
 
-    Napi::ThreadSafeFunction onConnection;
+    /**
+     * onConnection is created in createServer if bind works with refCount 2
+     *
+     * Server::close releases lwip thread
+     * Server::Finalize releases main thread
+     * (this.internalServer.close() should preceed this.internalServer = undefined in net.ts)
+     *
+     * In this normal scenario onConnection is always valid in accept_cb()
+     *
+     * Alternatively, onConnection can be aborted after calling unref.
+     * accept_cb() detects this and stops/frees listening pcb.
+     * Calling Server::close from main thread would be double free, but unref causing abort signifies that the main
+     * thread has stopped executing because the process is exiting, so this can not happen.
+     *
+     */
+    Napi::ThreadSafeFunction* onConnection;
+    void Finalize(Napi::Env env);
 
   private:
     tcp_pcb* pcb;
 
-    METHOD(listen);
+    static METHOD(createServer);
     METHOD(address);
+
+    Napi::Value _close(Napi::Env env);
+
     METHOD(close);
+
+    VOID_METHOD(ref)
+    {
+        NO_ARGS();
+        onConnection->Ref(env);
+    }
+    VOID_METHOD(unref)
+    {
+        NO_ARGS();
+        onConnection->Unref(env);
+    }
 };
 
 Napi::FunctionReference* Server::constructor = new Napi::FunctionReference;
@@ -219,9 +251,13 @@ CLASS_INIT_IMPL(Server)
 {
     auto ServerClass = CLASS_DEFINE(
         Server,
-        { CLASS_INSTANCE_METHOD(Server, listen),
-          CLASS_INSTANCE_METHOD(Server, address),
-          CLASS_INSTANCE_METHOD(Server, close) });
+        {
+            CLASS_STATIC_METHOD(Server, createServer),
+            CLASS_INSTANCE_METHOD(Server, address),
+            CLASS_INSTANCE_METHOD(Server, close),
+            CLASS_INSTANCE_METHOD(Server, ref),
+            CLASS_INSTANCE_METHOD(Server, unref),
+        });
 
     *constructor = Napi::Persistent(ServerClass);
 
@@ -229,26 +265,18 @@ CLASS_INIT_IMPL(Server)
     return exports;
 }
 
-Server::CONSTRUCTOR(Server)
+void Server::Finalize(Napi::Env env)
 {
-    NB_ARGS(1);
-    auto onConnection = ARG_FUNC(0);
-    this->onConnection = Napi::ThreadSafeFunction::New(env, onConnection, "TCP::onConnection", 0, 1);
-
-    typed_tcpip_callback([this]() {
-        this->pcb = tcp_new();
-        tcp_arg(this->pcb, this);
-    });
+    onConnection->Release();
 }
 
-err_t tcp_accept_cb(void* arg, tcp_pcb* new_pcb, err_t err)
+err_t accept_cb(void* arg, tcp_pcb* new_pcb, err_t err)
 {
-    auto thiz = reinterpret_cast<Server*>(arg);
+    auto onConnection = reinterpret_cast<Napi::ThreadSafeFunction*>(arg);
 
     // delay accepting connection until callback has been set up.
     tcp_backlog_delayed(new_pcb);
-
-    thiz->onConnection.BlockingCall([err, new_pcb](TSFN_ARGS) {
+    int tsfnErr = onConnection->BlockingCall([err, new_pcb](TSFN_ARGS) {
         if (err < 0) {
             jsCallback.Call({ ERROR("Accept error", err).Value() });
             return;
@@ -262,15 +290,21 @@ err_t tcp_accept_cb(void* arg, tcp_pcb* new_pcb, err_t err)
         // event handlers set in callback so now accept connection
         typed_tcpip_callback([new_pcb]() { tcp_backlog_accepted(new_pcb); });
     });
+    if (tsfnErr != napi_ok) {
+        tcp_close((tcp_pcb*)new_pcb->listener);
+        tcp_abort(new_pcb);
+        return ERR_ABRT;
+    }
 
     return ERR_OK;
 }
 
-METHOD(Server::listen)
+METHOD(Server::createServer)
 {
-    NB_ARGS(2);
+    NB_ARGS(3);
     int port = ARG_NUMBER(0);
     std::string address = ARG_STRING(1);
+    auto onConnection = ARG_FUNC(2);
 
     ip_addr_t ip_addr;
     if (address.size() == 0)
@@ -278,26 +312,48 @@ METHOD(Server::listen)
     else
         ipaddr_aton(address.c_str(), &ip_addr);
 
+    auto onConnectionTsfn = TSFN_ONCE(onConnection, "TCP::onConnection");
+
     return async_run(env, [&](DeferredPromise promise) {
-        typed_tcpip_callback(tsfn_once<err_t>(
+        typed_tcpip_callback(tsfn_once<std::tuple<err_t, tcp_pcb*> >(
             env,
             "Server::listen",
-            [this, port, ip_addr]() {
-                auto err = tcp_bind(this->pcb, &ip_addr, port);
-                if (err != ERR_OK)
-                    return err;
+            [port, ip_addr, onConnectionTsfn]() -> std::tuple<err_t, tcp_pcb*> {
+                auto pcb = tcp_new();
 
-                this->pcb = tcp_listen(this->pcb);
-                tcp_accept(this->pcb, tcp_accept_cb);
+                auto err = tcp_bind(pcb, &ip_addr, port);
+                if (err != ERR_OK) {
+                    tcp_close(pcb);
+                    onConnectionTsfn->Release();
+                    return { err, nullptr };
+                }
+                // ok, can only be released by Server::Finalize, but we have ref to server
+                onConnectionTsfn->Acquire();
+                tcp_arg(pcb, onConnectionTsfn);
 
-                return static_cast<err_t>(ERR_OK);
+                // only if binding succeeded assign to server
+                pcb = tcp_listen(pcb);
+
+                tcp_accept(pcb, accept_cb);
+
+                return { static_cast<err_t>(ERR_OK), pcb };
             },
-            [promise](TSFN_ARGS, auto err) {
+            [promise, onConnectionTsfn](TSFN_ARGS, std::tuple<err_t, tcp_pcb*> res) {
+                err_t err = std::get<0>(res);
+                tcp_pcb* pcb = std::get<1>(res);
+                
+                // pcb, onConnectionTsfn are only valid if no err
+
                 if (err != ERR_OK) {
                     return promise->Reject(ERROR("failed to bind", err).Value());
                 }
-                else
-                    return promise->Resolve(UNDEFINED);
+                else {
+                    auto serverObj = Server::constructor->New({});
+                    auto server = Server::Unwrap(serverObj);
+                    server->pcb = pcb;
+                    server->onConnection = onConnectionTsfn;
+                    return promise->Resolve(serverObj);
+                }
             }));
     });
 }
@@ -321,16 +377,23 @@ METHOD(Server::close)
     NO_ARGS();
 
     return async_run(env, [&](DeferredPromise promise) {
+        if (! pcb) {
+            return promise->Resolve(UNDEFINED);
+        }
+
+        auto pcb = this->pcb;
+        this->pcb = nullptr;
+
+        auto onConnection = this->onConnection;
+
         typed_tcpip_callback(tsfn_once_void(
             env,
             "Server::close",
-            [this]() {
-                tcp_close(this->pcb);
-                this->pcb = nullptr;
-
-                this->onConnection.Release();
+            [pcb, onConnection]() {
+                tcp_close(pcb);
+                onConnection->Release();
             },
-            [promise](TSFN_ARGS) { promise->Resolve(UNDEFINED); }));
+            [promise, onConnection](TSFN_ARGS) { promise->Resolve(UNDEFINED); }));
     });
 }
 
