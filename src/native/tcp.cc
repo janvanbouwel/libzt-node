@@ -339,7 +339,9 @@ METHOD(Server::createServer)
                 return { static_cast<err_t>(ERR_OK), pcb };
             },
             [promise, onConnectionTsfn](TSFN_ARGS, std::tuple<err_t, tcp_pcb*> res) {
-                auto [err, pcb] = res;
+                err_t err = std::get<0>(res);
+                tcp_pcb* pcb = std::get<1>(res);
+                
                 // pcb, onConnectionTsfn are only valid if no err
 
                 if (err != ERR_OK) {
