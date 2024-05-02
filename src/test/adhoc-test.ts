@@ -66,8 +66,9 @@ This test starts a server, opens a client in a child process that connects to th
 
     // server.on("error", (err)=>assert(false, `Server errored: ${util.format(err)}`));
 
+    await setTimeout(1000);
+
     const child = fork(__filename, [address]);
-    console.log(child.pid);
     child.on("exit", async (code) => {
       log(`Client exited with code ${code}`);
       assert.strictEqual(code, 0);

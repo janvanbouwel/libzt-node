@@ -39,7 +39,11 @@
 
 #define CLASS_INIT_IMPL(NAME) Napi::Object NAME::Init(Napi::Env env, Napi::Object exports)
 
-#define CLASS_INSTANCE_METHOD(CLASS, NAME) InstanceMethod<&CLASS::NAME>(#NAME, napi_default)
+#define _CLASS_METHOD(CLASS, NAME) <&CLASS::NAME>(#NAME, napi_default)
+
+#define CLASS_INSTANCE_METHOD(CLASS, NAME) InstanceMethod _CLASS_METHOD(CLASS, NAME)
+
+#define CLASS_STATIC_METHOD(CLASS, NAME) StaticMethod _CLASS_METHOD(CLASS, NAME)
 
 #define CLASS_SET_CONSTRUCTOR(CLASS)                                                                                   \
     [&]() {                                                                                                            \
@@ -102,13 +106,20 @@
 // Reference
 
 /**
- * Returns pointer to new reference. Has to be manually deleted!
+ * Returns pointer to new persistent reference.
  */
 std::shared_ptr<Napi::Reference<Napi::Uint8Array> > ref_uint8array(Napi::Uint8Array array)
 {
     auto ref = new Napi::Reference<Napi::Uint8Array>;
     *ref = Napi::Persistent(array);
     return std::shared_ptr<Napi::Reference<Napi::Uint8Array> >(ref);
+}
+
+std::shared_ptr<Napi::Reference<Napi::Value>> ref_value(Napi::Value obj)
+{
+    auto ref = new Napi::Reference<Napi::Value>;
+    *ref = Napi::Persistent(obj);
+    return std::shared_ptr<Napi::Reference<Napi::Value>>(ref);
 }
 
 // Threadsafe
