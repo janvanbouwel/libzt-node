@@ -22,18 +22,19 @@ ZeroTier has to be initialised before it can be used. This API is very WIP. See 
 import { startNode, zts } from "libzt";
 
 // initialises node from storage, new id will be created if path doesn't exist
-startNode("path/to/id", event => console.log(event));
+startNode("path/to/id", (event) => console.log(event));
 
-while (!zts.node_is_online()) { // will be made asynchronous in the future
-    await setTimeout(50); 
+while (!zts.node_is_online()) {
+  // will be made asynchronous in the future
+  await setTimeout(50);
 }
 console.log(zts.node_get_id()); // the node's id
 
-const nwid = "ff0000ffff000000" // Zerotier network id
+const nwid = "ff0000ffff000000"; // Zerotier network id
 zts.net_join(nwid);
 
 while (!zts.net_transport_is_ready(nwid)) {
-    await setTimeout(50);
+  await setTimeout(50);
 }
 
 // get assigned address, second argument is true for ipv6

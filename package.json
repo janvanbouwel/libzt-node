@@ -20,7 +20,7 @@
     "compile": "cmake-js build -p 8",
     "recompile": "cmake-js rebuild -p 8",
     "build": "rimraf dist && tsc",
-    "prettier": "npx prettier src --write"
+    "prettier": "npx prettier . --write"
   },
   "license": "ISC/BSL",
   "dependencies": {
