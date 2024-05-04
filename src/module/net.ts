@@ -182,6 +182,7 @@ class Socket extends Duplex {
 
   bytesRead = 0;
   bytesWritten = 0;
+  bytesAcked = 0;
 
   // internal socket writes to receiver, receiver writes to duplex (which is read by client application)
   private receiver = new PassThrough();
@@ -221,7 +222,7 @@ class Socket extends Duplex {
     });
     this.internalEvents.on("sent", (length) => {
       // console.log(`internal has sent ${length}`);
-      this.bytesWritten += length;
+      this.bytesAcked += length;
     });
     this.internalEvents.on("close", () => {
       // TODO: is this actually necessary?
@@ -265,8 +266,9 @@ class Socket extends Duplex {
     chunk: Buffer,
     callback: (error?: Error | null) => void,
   ): Promise<void> {
-    const currentWritten = this.bytesWritten;
+    const currentAcked = this.bytesAcked;
     const length = await this.internalSocket.send(chunk);
+    this.bytesWritten += length;
 
     // everything was written out
     if (length === chunk.length) {
@@ -280,7 +282,7 @@ class Socket extends Duplex {
     };
 
     // new space became available in the time it took to sync threads
-    if (currentWritten !== this.bytesWritten) continuation();
+    if (currentAcked !== this.bytesAcked) continuation();
     // wait for more space to become available
     else this.internalEvents.once("sent", continuation);
   }
@@ -288,8 +290,15 @@ class Socket extends Duplex {
   _final(callback: (error?: Error | null | undefined) => void): void {
     if (this.connected) {
       this.internalEvents.once("close", callback);
-
-      this.internalSocket.shutdown_wr();
+      const waitForFinished = () => {
+        // console.log(`wait for finished ${this.bytesWriteCalled - this.bytesAcked}`);
+        if (this.bytesAcked < this.bytesWritten) {
+          this.internalEvents.once("sent", waitForFinished);
+        } else {
+          this.internalSocket.shutdown_wr();
+        }
+      };
+      waitForFinished();
     } else {
       this.internalSocket.shutdown_wr();
       callback();
