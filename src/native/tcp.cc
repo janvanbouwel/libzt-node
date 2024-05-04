@@ -71,12 +71,6 @@ void Socket::emit_close()
 err_t tcp_receive_cb(void* arg, struct tcp_pcb* tpcb, struct pbuf* p, err_t err)
 {
     auto thiz = reinterpret_cast<Socket*>(arg);
-    if (thiz->emit.Acquire() != napi_ok) {
-        if (p)
-            ts_pbuf_free(p);
-        return ERR_OK;   // TODO: other return code? ack the buf immediately? will we ever get here? (if destroy
-                         // implemented maybe)
-    }
     thiz->emit.BlockingCall([p](TSFN_ARGS) {
         if (! p) {
             jsCallback.Call({ STRING("data"), UNDEFINED });
@@ -90,7 +84,7 @@ err_t tcp_receive_cb(void* arg, struct tcp_pcb* tpcb, struct pbuf* p, err_t err)
             jsCallback.Call({ STRING("data"), data });
         }
     });
-    thiz->emit.Release();
+    
     if (tpcb->state == TIME_WAIT) {
         // tx shutdown and FIN received
         thiz->emit_close();
