@@ -231,7 +231,8 @@ class Socket extends Duplex {
       console.log(error);
       this.destroy(error);
     });
-    this.internalSocket.init((event: string, ...args: unknown[]) =>
+
+    this.internalSocket.setEmitter((event: string, ...args: unknown[]) =>
       this.internalEvents.emit(event, ...args),
     );
 

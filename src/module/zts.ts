@@ -9,7 +9,7 @@ export interface InternalError extends Error {
 
 export declare class InternalSocket {
   constructor();
-  init(emit: (event: string, ...args: unknown[]) => boolean): void;
+  setEmitter(emit: (event: string, ...args: unknown[]) => boolean): void;
   connect(port: number, address: string): void;
   ack(length: number): void;
   send(data: Uint8Array): Promise<number>;

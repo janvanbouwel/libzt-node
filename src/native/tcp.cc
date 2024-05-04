@@ -31,11 +31,14 @@ CLASS(Socket)
 
     void emit_close();
 
+    // in lwip tcpip thread
+    void init(tcp_pcb * pcb);
+
   private:
     tcp_pcb* pcb = nullptr;
 
     VOID_METHOD(connect);
-    VOID_METHOD(init);
+    VOID_METHOD(setEmitter);
     METHOD(send);
     VOID_METHOD(ack);
     VOID_METHOD(shutdown_wr);
@@ -47,7 +50,7 @@ CLASS_INIT_IMPL(Socket)
 {
     auto SocketClass = CLASS_DEFINE(
         Socket,
-        { CLASS_INSTANCE_METHOD(Socket, init),
+        { CLASS_INSTANCE_METHOD(Socket, setEmitter),
           CLASS_INSTANCE_METHOD(Socket, connect),
           CLASS_INSTANCE_METHOD(Socket, send),
           CLASS_INSTANCE_METHOD(Socket, ack),
@@ -118,24 +121,24 @@ void tcp_err_cb(void* arg, err_t err)
     thiz->emit.Release();
 }
 
-VOID_METHOD(Socket::init)
+VOID_METHOD(Socket::setEmitter)
 {
     NB_ARGS(1);
     auto emit = ARG_FUNC(0);
     this->emit = Napi::ThreadSafeFunction::New(env, emit, "tcpEventEmitter", 0, 1);
-
-    typed_tcpip_callback([this]() {
-        if (! this->pcb)
-            this->pcb = tcp_new();
-        tcp_arg(this->pcb, this);
-
-        tcp_recv(this->pcb, tcp_receive_cb);
-
-        tcp_sent(this->pcb, tcp_sent_cb);
-
-        tcp_err(this->pcb, tcp_err_cb);
-    });
 }
+
+void Socket::init(tcp_pcb* pcb)
+{
+    tcp_arg(this->pcb, this);
+
+    tcp_recv(this->pcb, tcp_receive_cb);
+
+    tcp_sent(this->pcb, tcp_sent_cb);
+
+    tcp_err(this->pcb, tcp_err_cb);
+}
+
 VOID_METHOD(Socket::connect)
 {
     NB_ARGS(2);
@@ -145,8 +148,10 @@ VOID_METHOD(Socket::connect)
     ip_addr_t ip_addr;
     ipaddr_aton(address.c_str(), &ip_addr);
 
-    typed_tcpip_callback([pcb = this->pcb, ip_addr, port]() {
-        tcp_connect(pcb, &ip_addr, port, [](void* arg, struct tcp_pcb* tpcb, err_t err) -> err_t {
+    typed_tcpip_callback([this, ip_addr, port]() {
+        if (! this->pcb)
+            this->pcb = tcp_new();
+        this->init(this->pcb);
             auto thiz = reinterpret_cast<Socket*>(arg);
             thiz->emit.BlockingCall([](TSFN_ARGS) { jsCallback.Call({ STRING("connect") }); });
             return ERR_OK;
@@ -160,16 +165,23 @@ METHOD(Socket::send)
     auto data = ARG_UINT8ARRAY(0);
 
     return async_run(env, [&](auto promise) {
-        typed_tcpip_callback(tsfn_once<u16_t>(
+        typed_tcpip_callback(tsfn_once<tcpwnd_size_t>(
             env,
             "Socket::send",
             [this, bufLength = data.ByteLength(), buffer = data.Data()]() {
-                auto sndbuf = tcp_sndbuf(this->pcb);
+                tcpwnd_size_t sent = 0;
 
-                u16_t len = (sndbuf < bufLength) ? sndbuf : bufLength;
-                tcp_write(this->pcb, buffer, len, TCP_WRITE_FLAG_COPY);
+                while (true) {
+                    tcpwnd_size_t sndbuf = tcp_sndbuf(this->pcb);
+                    auto len = LWIP_MIN(UINT16_MAX, LWIP_MIN(sndbuf, bufLength - sent));
+                    if (len == 0)
+                        break;
 
-                return len;
+                    tcp_write(this->pcb, buffer + sent, len, TCP_WRITE_FLAG_COPY);
+                    sent += len;
+                }
+
+                return sent;
             },
             [dataRef = ref_uint8array(data), promise](TSFN_ARGS, auto len) -> void {
                 dataRef->Reset();
@@ -282,10 +294,13 @@ err_t accept_cb(void* arg, tcp_pcb* new_pcb, err_t err)
             return;
         }
 
-        auto socket = Socket::constructor->New({});
-        Socket::Unwrap(socket)->set_pcb(new_pcb);
+        auto socketObj = Socket::constructor->New({});
+        auto socket = Socket::Unwrap(socketObj);
+        socket->set_pcb(new_pcb);
 
-        jsCallback.Call({ UNDEFINED, socket });
+        jsCallback.Call({ UNDEFINED, socketObj });
+
+        socket->init(new_pcb);
 
         // event handlers set in callback so now accept connection
         typed_tcpip_callback([new_pcb]() { tcp_backlog_accepted(new_pcb); });
@@ -341,7 +356,7 @@ METHOD(Server::createServer)
             [promise, onConnectionTsfn](TSFN_ARGS, std::tuple<err_t, tcp_pcb*> res) {
                 err_t err = std::get<0>(res);
                 tcp_pcb* pcb = std::get<1>(res);
-                
+
                 // pcb, onConnectionTsfn are only valid if no err
 
                 if (err != ERR_OK) {
