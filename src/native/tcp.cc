@@ -152,6 +152,7 @@ VOID_METHOD(Socket::connect)
         if (! this->pcb)
             this->pcb = tcp_new();
         this->init(this->pcb);
+        tcp_connect(pcb, &ip_addr, port, [](void* arg, struct tcp_pcb* tpcb, err_t err) -> err_t {
             auto thiz = reinterpret_cast<Socket*>(arg);
             thiz->emit.BlockingCall([](TSFN_ARGS) { jsCallback.Call({ STRING("connect") }); });
             return ERR_OK;
