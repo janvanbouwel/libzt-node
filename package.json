@@ -1,6 +1,6 @@
 {
   "name": "libzt",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Idiomatic node bindings for libzt.",
   "keywords": [
     "zerotier",
@@ -20,22 +20,22 @@
     "compile": "cmake-js build -p 8",
     "recompile": "cmake-js rebuild -p 8",
     "build": "rimraf dist && tsc",
-    "prettier": "npx prettier src --write"
+    "prettier": "npx prettier . --write"
   },
   "license": "ISC/BSL",
   "dependencies": {
-    "cmake-js": "^7.2.1",
-    "node-addon-api": "^7.0.0",
-    "pkg-prebuilds": "^0.2.1"
+    "cmake-js": "^7.3.0",
+    "node-addon-api": "^8.0.0",
+    "pkg-prebuilds": "^1.0.0"
   },
   "devDependencies": {
-    "@types/node": "^20.12.7",
-    "@typescript-eslint/eslint-plugin": "^5.59.9",
-    "@typescript-eslint/parser": "^5.59.9",
-    "eslint": "^8.42.0",
-    "prettier": "^3.1.1",
-    "rimraf": "^5.0.1",
-    "typescript": "^5.1.3"
+    "@types/node": "^20.12.8",
+    "@typescript-eslint/eslint-plugin": "^7.8.0",
+    "@typescript-eslint/parser": "^7.8.0",
+    "eslint": "^8.57.0",
+    "prettier": "^3.2.5",
+    "rimraf": "^5.0.5",
+    "typescript": "^5.4.5"
   },
   "files": [
     "prebuilds",

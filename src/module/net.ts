@@ -16,7 +16,7 @@ export class Server extends EventEmitter implements node_net.Server {
 
   constructor(
     options: Record<string, never>,
-    connectionListener?: (socket: Socket) => void
+    connectionListener?: (socket: Socket) => void,
   ) {
     super();
     this.once("close", () => (this.connAmount = -1));
@@ -25,7 +25,7 @@ export class Server extends EventEmitter implements node_net.Server {
 
   private internalConnectionHandler(
     error: InternalError | undefined,
-    socket: InternalSocket
+    socket: InternalSocket,
   ): void {
     if (
       this.maxConnections !== undefined &&
@@ -55,7 +55,7 @@ export class Server extends EventEmitter implements node_net.Server {
       this.internalServer = await zts.Server.createServer(
         port,
         host,
-        (error, socket) => this.internalConnectionHandler(error, socket)
+        (error, socket) => this.internalConnectionHandler(error, socket),
       );
       this.listening = true;
       this.emit("listening");
@@ -78,12 +78,12 @@ export class Server extends EventEmitter implements node_net.Server {
     port?: number,
     hostname?: string,
     backlog?: number,
-    listeningListener?: () => void
+    listeningListener?: () => void,
   ): this;
   listen(
     port?: number,
     hostname?: string,
-    listeningListener?: () => void
+    listeningListener?: () => void,
   ): this;
   listen(port?: number, backlog?: number, listeningListener?: () => void): this;
   listen(port?: number, listeningListener?: () => void): this;
@@ -165,7 +165,7 @@ export class Server extends EventEmitter implements node_net.Server {
 }
 
 export function createServer(
-  connectionListener?: (socket: Socket) => void
+  connectionListener?: (socket: Socket) => void,
 ): Server {
   return new Server({}, connectionListener);
 }
@@ -182,13 +182,14 @@ class Socket extends Duplex {
 
   bytesRead = 0;
   bytesWritten = 0;
+  bytesAcked = 0;
 
   // internal socket writes to receiver, receiver writes to duplex (which is read by client application)
   private receiver = new PassThrough();
 
   constructor(
     options: node_net.SocketConstructorOpts,
-    internal?: InternalSocket
+    internal?: InternalSocket,
   ) {
     super({
       allowHalfOpen: options.allowHalfOpen ?? false,
@@ -221,7 +222,7 @@ class Socket extends Duplex {
     });
     this.internalEvents.on("sent", (length) => {
       // console.log(`internal has sent ${length}`);
-      this.bytesWritten += length;
+      this.bytesAcked += length;
     });
     this.internalEvents.on("close", () => {
       // TODO: is this actually necessary?
@@ -231,8 +232,9 @@ class Socket extends Duplex {
       console.log(error);
       this.destroy(error);
     });
-    this.internalSocket.init((event: string, ...args: unknown[]) =>
-      this.internalEvents.emit(event, ...args)
+
+    this.internalSocket.setEmitter((event: string, ...args: unknown[]) =>
+      this.internalEvents.emit(event, ...args),
     );
 
     // setup passthrough for receiving data
@@ -253,7 +255,7 @@ class Socket extends Duplex {
   _write(
     chunk: Buffer,
     _: unknown,
-    callback: (error?: Error | null) => void
+    callback: (error?: Error | null) => void,
   ): void {
     if (!this.connected)
       this.once("connect", () => this.realWrite(chunk, callback));
@@ -262,10 +264,11 @@ class Socket extends Duplex {
 
   private async realWrite(
     chunk: Buffer,
-    callback: (error?: Error | null) => void
+    callback: (error?: Error | null) => void,
   ): Promise<void> {
-    const currentWritten = this.bytesWritten;
+    const currentAcked = this.bytesAcked;
     const length = await this.internalSocket.send(chunk);
+    this.bytesWritten += length;
 
     // everything was written out
     if (length === chunk.length) {
@@ -279,7 +282,7 @@ class Socket extends Duplex {
     };
 
     // new space became available in the time it took to sync threads
-    if (currentWritten !== this.bytesWritten) continuation();
+    if (currentAcked !== this.bytesAcked) continuation();
     // wait for more space to become available
     else this.internalEvents.once("sent", continuation);
   }
@@ -287,8 +290,15 @@ class Socket extends Duplex {
   _final(callback: (error?: Error | null | undefined) => void): void {
     if (this.connected) {
       this.internalEvents.once("close", callback);
-
-      this.internalSocket.shutdown_wr();
+      const waitForFinished = () => {
+        // console.log(`wait for finished ${this.bytesWriteCalled - this.bytesAcked}`);
+        if (this.bytesAcked < this.bytesWritten) {
+          this.internalEvents.once("sent", waitForFinished);
+        } else {
+          this.internalSocket.shutdown_wr();
+        }
+      };
+      waitForFinished();
     } else {
       this.internalSocket.shutdown_wr();
       callback();
@@ -297,7 +307,7 @@ class Socket extends Duplex {
 
   connect(
     options: node_net.TcpSocketConnectOpts,
-    connectionListener?: () => void
+    connectionListener?: () => void,
   ): this {
     if (this.connected) throw Error("Already connected");
 
@@ -309,7 +319,7 @@ class Socket extends Duplex {
 
 function _createConnection(
   options: node_net.TcpNetConnectOpts,
-  connectionListener?: () => void
+  connectionListener?: () => void,
 ): Socket {
   const socket = new Socket(options);
 
@@ -322,21 +332,21 @@ function _createConnection(
 
 export function createConnection(
   options: node_net.NetConnectOpts,
-  connectionListener?: () => void
+  connectionListener?: () => void,
 ): Socket;
 export function createConnection(
   port: number,
   host?: string,
-  connectionListener?: () => void
+  connectionListener?: () => void,
 ): Socket;
 export function createConnection(
   path: string,
-  connectionListener?: () => void
+  connectionListener?: () => void,
 ): Socket;
 export function createConnection(
   port: number | string | node_net.NetConnectOpts,
   host?: string | (() => void),
-  connectionListener?: () => void
+  connectionListener?: () => void,
 ): Socket {
   if (typeof port === "string") throw Error("Only TCP sockets are possible");
   if (typeof port === "number") {

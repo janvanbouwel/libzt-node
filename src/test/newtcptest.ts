@@ -4,31 +4,32 @@ import { startNode, zts, net, SocketErrors, events } from "../index";
 import { createReadStream, createWriteStream, existsSync } from "fs";
 import { Duplex, Transform, PassThrough } from "stream";
 
-// eslint-disable-next-line no-constant-condition
-const progress = true
-  ? new PassThrough()
-  : new Transform({
-      transform(chunk, encoding, callback) {
-        console.log(chunk.length);
-        callback(null, chunk);
-      },
-    });
+const progress = () =>
+  // eslint-disable-next-line no-constant-condition
+  true
+    ? new PassThrough()
+    : new Transform({
+        transform(chunk, encoding, callback) {
+          console.log(chunk.length);
+          callback(null, chunk);
+        },
+      });
 
 const sendFile = (socket: Duplex, filename: string) => {
   // socket.on("data", ()=>undefined);
   socket.on("end", () => console.log("socket ended"));
   socket.on("close", () => console.log("socket closed"));
+
   const input = createReadStream(filename);
-  input.pipe(progress).pipe(socket);
+  input.pipe(progress()).pipe(socket);
 };
 
 const recvFile = (socket: Duplex, filename: string) => {
-  socket.on("end", () => {
-    console.log("socket ended");
-  });
+  socket.on("end", () => console.log("socket ended"));
   socket.on("close", () => console.log("socket closed"));
+
   const output = createWriteStream(filename);
-  socket.pipe(progress).pipe(output);
+  socket.pipe(progress()).pipe(output);
 };
 
 const arg = (index: number) => process.argv[index];
@@ -136,11 +137,11 @@ example usage: server-client pair on adhoc network, server sends "./send" and cl
   } else {
     await setTimeout(1000);
     const socket = net.connect(port, serverIp, () => {
+      socket.on("close", () => zts.node_free());
       console.log("connected");
 
       handleSocket(socket, filename);
     });
-    console.log(socket.allowHalfOpen);
     socket.on("error", (error) => {
       console.log(error);
       if ("code" in error) {

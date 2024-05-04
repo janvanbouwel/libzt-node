@@ -9,7 +9,7 @@ export interface InternalError extends Error {
 
 export declare class InternalSocket {
   constructor();
-  init(emit: (event: string, ...args: unknown[]) => boolean): void;
+  setEmitter(emit: (event: string, ...args: unknown[]) => boolean): void;
   connect(port: number, address: string): void;
   ack(length: number): void;
   send(data: Uint8Array): Promise<number>;
@@ -26,7 +26,7 @@ export declare class InternalServer {
 declare class UDP {
   constructor(
     ipv6: boolean,
-    recvCallback: (data: Buffer, addr: string, port: number) => void
+    recvCallback: (data: Buffer, addr: string, port: number) => void,
   );
 
   send(data: Uint8Array, addr: string, port: number): Promise<void>;
@@ -62,7 +62,7 @@ type ZTS = {
 
   UDP: new (
     ipv6: boolean,
-    recvCallback: (data: Buffer, addr: string, port: number) => void
+    recvCallback: (data: Buffer, addr: string, port: number) => void,
   ) => UDP;
 
   Server: {
@@ -71,8 +71,8 @@ type ZTS = {
       address: string,
       onConnection: (
         error: InternalError | undefined,
-        socket: InternalSocket
-      ) => void
+        socket: InternalSocket,
+      ) => void,
     ): Promise<InternalServer>;
   };
   Socket: new () => InternalSocket;
@@ -83,7 +83,7 @@ import * as options from "../binding-options";
 export const zts = loadBinding<ZTS>(
   // project root
   `${__dirname}/../..`,
-  options
+  options,
 );
 
 export enum errors {
