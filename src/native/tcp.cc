@@ -325,7 +325,7 @@ METHOD(Server::createServer)
     auto onConnectionTsfn = TSFN_ONCE(onConnection, "TCP::onConnection");
 
     return async_run(env, [&](DeferredPromise promise) {
-        typed_tcpip_callback(tsfn_once<std::tuple<err_t, tcp_pcb*> >(
+        typed_tcpip_callback(tsfn_once_tuple(
             env,
             "Server::listen",
             [port, ip_addr, onConnectionTsfn]() -> std::tuple<err_t, tcp_pcb*> {
@@ -348,10 +348,7 @@ METHOD(Server::createServer)
 
                 return { static_cast<err_t>(ERR_OK), pcb };
             },
-            [promise, onConnectionTsfn](TSFN_ARGS, std::tuple<err_t, tcp_pcb*> res) {
-                err_t err = std::get<0>(res);
-                tcp_pcb* pcb = std::get<1>(res);
-
+            [promise, onConnectionTsfn](TSFN_ARGS, err_t err, tcp_pcb* pcb) {
                 // pcb, onConnectionTsfn are only valid if no err
 
                 if (err != ERR_OK) {
