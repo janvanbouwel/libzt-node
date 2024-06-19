@@ -76,11 +76,9 @@ err_t tcp_receive_cb(void* arg, struct tcp_pcb* tpcb, struct pbuf* p, err_t err)
             jsCallback.Call({ STRING("data"), UNDEFINED });
         }
         else {
-            auto data = Napi::Buffer<char>::NewOrCopy(
-                env,
-                reinterpret_cast<char*>(p->payload),
-                p->len,
-                [p](Napi::Env env, char* data) { ts_pbuf_free(p); });
+            auto data = Napi::Uint8Array::New(env, p->tot_len);
+            pbuf_copy_partial(p, data.Data(), p->tot_len, 0);
+            ts_pbuf_free(p);
             jsCallback.Call({ STRING("data"), data });
         }
     });
@@ -190,7 +188,15 @@ VOID_METHOD(Socket::ack)
     NB_ARGS(1);
     int length = ARG_NUMBER(0);
 
-    typed_tcpip_callback([pcb = this->pcb, length]() { tcp_recved(pcb, length); });
+    typed_tcpip_callback([pcb = this->pcb, length]() {
+        size_t remaining = length;
+        do {
+            u16_t recved = (u16_t)((remaining > 0xffff) ? 0xffff : remaining);
+            tcp_recved(pcb, recved);
+            remaining -= recved;
+        } while (remaining != 0);
+        // tcp_recved(pcb, length);
+    });
 }
 
 VOID_METHOD(Socket::shutdown_wr)
