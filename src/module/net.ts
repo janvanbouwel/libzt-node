@@ -290,15 +290,7 @@ class Socket extends Duplex {
   _final(callback: (error?: Error | null | undefined) => void): void {
     if (this.connected) {
       this.internalEvents.once("close", callback);
-      const waitForFinished = () => {
-        // console.log(`wait for finished ${this.bytesWriteCalled - this.bytesAcked}`);
-        if (this.bytesAcked < this.bytesWritten) {
-          this.internalEvents.once("sent", waitForFinished);
-        } else {
-          this.internalSocket.shutdown_wr();
-        }
-      };
-      waitForFinished();
+      this.internalSocket.shutdown_wr();
     } else {
       this.internalSocket.shutdown_wr();
       callback();
