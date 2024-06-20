@@ -26,7 +26,7 @@ export declare class InternalServer {
 declare class UDP {
   constructor(
     ipv6: boolean,
-    recvCallback: (data: Buffer, addr: string, port: number) => void,
+    recvCallback: (data: Uint8Array, addr: string, port: number) => void,
   );
 
   send(data: Uint8Array, addr: string, port: number): Promise<void>;
@@ -45,7 +45,7 @@ declare class UDP {
 
 type ZTS = {
   init_from_storage(path: string): void;
-  init_from_memory(key: Buffer): void;
+  init_from_memory(key: Uint8Array): void;
   init_set_event_handler(callback: (event: number) => void): void;
 
   node_start(): void;
@@ -62,7 +62,7 @@ type ZTS = {
 
   UDP: new (
     ipv6: boolean,
-    recvCallback: (data: Buffer, addr: string, port: number) => void,
+    recvCallback: (data: Uint8Array, addr: string, port: number) => void,
   ) => UDP;
 
   Server: {

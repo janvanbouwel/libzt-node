@@ -205,7 +205,7 @@ class Socket extends Duplex {
       this.connected = true;
       this.emit("connect");
     });
-    this.internalEvents.on("data", (data?: Buffer) => {
+    this.internalEvents.on("data", (data?: Uint8Array) => {
       if (data) {
         // console.log(`received ${data.length}`);
 
@@ -253,7 +253,7 @@ class Socket extends Duplex {
   }
 
   _write(
-    chunk: Buffer,
+    chunk: Uint8Array,
     _: unknown,
     callback: (error?: Error | null) => void,
   ): void {
@@ -263,7 +263,7 @@ class Socket extends Duplex {
   }
 
   private async realWrite(
-    chunk: Buffer,
+    chunk: Uint8Array,
     callback: (error?: Error | null) => void,
   ): Promise<void> {
     const currentAcked = this.bytesAcked;

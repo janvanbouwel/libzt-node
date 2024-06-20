@@ -5,7 +5,7 @@ import { isIPv6 } from "net";
 interface UDPSocketEvents {
   close: () => void;
   message: (
-    msg: Buffer,
+    msg: Uint8Array,
     rinfo: {
       address: string;
       family: "udp4" | "udp6";
@@ -87,7 +87,7 @@ class Socket extends EventEmitter {
   }
 
   send(
-    msg: Buffer,
+    msg: Uint8Array,
     port?: number,
     address?: string,
     callback?: (err?: InternalError) => void,
