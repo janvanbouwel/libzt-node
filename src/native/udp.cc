@@ -97,10 +97,9 @@ void tsfnOnRecv(TSFN_ARGS, nullptr_t* ctx, recv_data* rd)
     }
     pbuf* p = rd->p;
 
-    auto data =
-        Napi::Buffer<char>::NewOrCopy(env, reinterpret_cast<char*>(p->payload), p->len, [p](Napi::Env env, char* data) {
-            ts_pbuf_free(p);
-        });
+    auto data = Napi::Uint8Array::New(env, p->tot_len);
+    pbuf_copy_partial(p, data.Data(), p->tot_len, 0);
+    ts_pbuf_free(p);
 
     auto addr = STRING(rd->addr);
     auto port = NUMBER(rd->port);
@@ -112,7 +111,7 @@ void tsfnOnRecv(TSFN_ARGS, nullptr_t* ctx, recv_data* rd)
 
 /**
  * @param ipv6 { bool } sets the type of the udp socket
- * @param recvCallback { (data: Buffer, addr: string, port: number)=>void }
+ * @param recvCallback { (data: Uint8Array, addr: string, port: number)=>void }
  * called when receiving data
  */
 Socket::CONSTRUCTOR(Socket)
