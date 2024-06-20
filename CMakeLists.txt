@@ -285,6 +285,7 @@ set(NODEJS_SRC_FILES
 
 add_library(nodezt SHARED ${NODEJS_SRC_FILES} ${CMAKE_JS_SRC})
 set_target_properties(nodezt PROPERTIES PREFIX "" SUFFIX ".node")
+target_compile_features(nodezt PRIVATE cxx_std_20)
 
 target_link_libraries(nodezt 
     ${CMAKE_JS_LIB}
