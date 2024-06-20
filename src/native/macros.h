@@ -115,11 +115,11 @@ std::shared_ptr<Napi::Reference<Napi::Uint8Array> > ref_uint8array(Napi::Uint8Ar
     return std::shared_ptr<Napi::Reference<Napi::Uint8Array> >(ref);
 }
 
-std::shared_ptr<Napi::Reference<Napi::Value>> ref_value(Napi::Value obj)
+std::shared_ptr<Napi::Reference<Napi::Value> > ref_value(Napi::Value obj)
 {
     auto ref = new Napi::Reference<Napi::Value>;
     *ref = Napi::Persistent(obj);
-    return std::shared_ptr<Napi::Reference<Napi::Value>>(ref);
+    return std::shared_ptr<Napi::Reference<Napi::Value> >(ref);
 }
 
 // Threadsafe
@@ -174,6 +174,23 @@ tsfn_once(Napi::Env env, std::string name, std::function<T()> threaded, std::fun
         T ret = threaded();
 
         tsfn->BlockingCall([js_callback, ret](TSFN_ARGS) { js_callback(env, jsCallback, ret); });
+        tsfn->Release();
+    };
+}
+
+template <typename JSF, typename TF, typename... Types>
+std::function<void()> tsfn_once_tuple(Napi::Env env, std::string name, TF threaded, JSF js_callback)
+{
+    auto callback = Napi::Function::New(env, [](CALLBACKINFO) {});
+
+    auto tsfn = TSFN_ONCE(callback, "");
+
+    return [tsfn, threaded, js_callback]() -> void {
+        auto ret = threaded();
+
+        tsfn->BlockingCall([js_callback, ret](TSFN_ARGS) {
+            std::apply(js_callback, std::tuple_cat(std::make_tuple(env, jsCallback), ret));
+        });
         tsfn->Release();
     };
 }
