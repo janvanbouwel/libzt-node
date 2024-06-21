@@ -307,6 +307,38 @@ class Socket extends Duplex {
     if (connectionListener) this.once("connect", connectionListener);
     return this;
   }
+
+  ref(): this {
+    throw Error("not yet implemented"); // TODO
+  }
+
+  unref(): this {
+    throw Error("not yet implemented"); // TODO
+  }
+
+  address(): node_net.AddressInfo | {} {
+    throw Error("not yet implemented"); // TODO
+  }
+
+  setTimeout(timeout: number, callback?: () => void): this {
+    throw Error("not yet implemented"); // TODO
+  }
+
+  setNoDelay(noDelay?: boolean): this {
+    throw Error("not yet implemented"); // TODO
+  }
+
+  setKeepAlive(enable?: boolean, initialDelay?: number): this {
+    throw Error("not yet implemented"); // TODO
+  }
+
+  resetAndDestroy(): this {
+    throw Error("not yet implemented"); // TODO
+  }
+
+  destroySoon(): void {
+    throw Error("not yet implemented"); // TODO
+  }
 } // class Socket
 
 function _createConnection(
