@@ -168,7 +168,7 @@ tsfn_once(Napi::Env env, std::string name, std::function<T()> threaded, std::fun
 {
     auto callback = Napi::Function::New(env, [](CALLBACKINFO) {});
 
-    auto tsfn = TSFN_ONCE(callback, "");
+    auto tsfn = TSFN_ONCE(callback, name);
 
     return [tsfn, threaded, js_callback]() {
         T ret = threaded();
@@ -183,7 +183,7 @@ std::function<void()> tsfn_once_tuple(Napi::Env env, std::string name, TF thread
 {
     auto callback = Napi::Function::New(env, [](CALLBACKINFO) {});
 
-    auto tsfn = TSFN_ONCE(callback, "");
+    auto tsfn = TSFN_ONCE(callback, name);
 
     return [tsfn, threaded, js_callback]() -> void {
         auto ret = threaded();
@@ -207,7 +207,7 @@ std::function<void()> tsfn_once_void(
 {
     auto callback = Napi::Function::New(env, [](CALLBACKINFO) {});
 
-    auto tsfn = TSFN_ONCE(callback, "");
+    auto tsfn = TSFN_ONCE(callback, name);
 
     return [tsfn, threaded, js_callback]() {
         threaded();

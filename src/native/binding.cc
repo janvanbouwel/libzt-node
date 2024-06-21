@@ -34,19 +34,19 @@ VOID_METHOD(init_from_memory)
     THROW_ERROR(err, "init_from_memory");
 }
 
-Napi::ThreadSafeFunction event_callback;
+Napi::ThreadSafeFunction* event_callback = nullptr;
 
 void event_handler(void* msgPtr)
 {
-    event_callback.Acquire();
+    if (! event_callback) {
+        return;
+    }
 
     zts_event_msg_t* msg = reinterpret_cast<zts_event_msg_t*>(msgPtr);
     int event = msg->event_code;
     auto cb = [event](TSFN_ARGS) { jsCallback.Call({ NUMBER(event) }); };
 
-    event_callback.NonBlockingCall(cb);
-
-    event_callback.Release();
+    event_callback->NonBlockingCall(cb);
 }
 
 /**
@@ -57,7 +57,11 @@ VOID_METHOD(init_set_event_handler)
     NB_ARGS(1);
     auto cb = ARG_FUNC(0);
 
-    event_callback = Napi::ThreadSafeFunction::New(env, cb, "zts_event_listener", 0, 1);
+    if (event_callback) {
+        event_callback->Abort();
+    }
+
+    event_callback = TSFN_ONCE(cb, "zts_event_listener");
 
     int err = zts_init_set_event_handler(&event_handler);
     THROW_ERROR(err, "init_set_event_handler");
@@ -98,8 +102,10 @@ VOID_METHOD(node_stop)
     int err = zts_node_stop();
     THROW_ERROR(err, "node_stop");
 
-    if (event_callback)
-        event_callback.Abort();
+    if (event_callback) {
+        event_callback->Abort();
+        event_callback = nullptr;
+    }
 }
 
 VOID_METHOD(node_free)
@@ -109,8 +115,10 @@ VOID_METHOD(node_free)
     int err = zts_node_free();
     THROW_ERROR(err, "node_free");
 
-    if (event_callback)
-        event_callback.Abort();
+    if (event_callback) {
+        event_callback->Abort();
+        event_callback = nullptr;
+    }
 }
 
 // ### net ###
