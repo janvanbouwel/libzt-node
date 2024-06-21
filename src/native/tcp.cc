@@ -82,7 +82,7 @@ err_t tcp_receive_cb(void* arg, struct tcp_pcb* tpcb, struct pbuf* p, err_t err)
             jsCallback.Call({ STRING("data"), data });
         }
     });
-    
+
     if (tpcb->state == TIME_WAIT) {
         // tx shutdown and FIN received
         thiz->emit_close();
@@ -218,23 +218,7 @@ CLASS(Server)
     {
     }
 
-    /**
-     * onConnection is created in createServer if bind works with refCount 2
-     *
-     * Server::close releases lwip thread
-     * Server::Finalize releases main thread
-     * (this.internalServer.close() should preceed this.internalServer = undefined in net.ts)
-     *
-     * In this normal scenario onConnection is always valid in accept_cb()
-     *
-     * Alternatively, onConnection can be aborted after calling unref.
-     * accept_cb() detects this and stops/frees listening pcb.
-     * Calling Server::close from main thread would be double free, but unref causing abort signifies that the main
-     * thread has stopped executing because the process is exiting, so this can not happen.
-     *
-     */
     Napi::ThreadSafeFunction* onConnection;
-    void Finalize(Napi::Env env);
 
   private:
     tcp_pcb* pcb;
@@ -249,12 +233,14 @@ CLASS(Server)
     VOID_METHOD(ref)
     {
         NO_ARGS();
-        onConnection->Ref(env);
+        if (onConnection)
+            onConnection->Ref(env);
     }
     VOID_METHOD(unref)
     {
         NO_ARGS();
-        onConnection->Unref(env);
+        if (onConnection)
+            onConnection->Unref(env);
     }
 };
 
@@ -276,11 +262,6 @@ CLASS_INIT_IMPL(Server)
 
     EXPORT(Server, ServerClass);
     return exports;
-}
-
-void Server::Finalize(Napi::Env env)
-{
-    onConnection->Release();
 }
 
 err_t accept_cb(void* arg, tcp_pcb* new_pcb, err_t err)
@@ -325,7 +306,7 @@ METHOD(Server::createServer)
     ip_addr_t ip_addr;
     if (address.size() == 0)
         ip_addr = ip_addr_any_type;
-    else
+    else   // TODO error handling
         ipaddr_aton(address.c_str(), &ip_addr);
 
     auto onConnectionTsfn = TSFN_ONCE(onConnection, "TCP::onConnection");
@@ -343,13 +324,9 @@ METHOD(Server::createServer)
                     onConnectionTsfn->Release();
                     return { err, nullptr };
                 }
-                // ok, can only be released by Server::Finalize, but we have ref to server
-                onConnectionTsfn->Acquire();
                 tcp_arg(pcb, onConnectionTsfn);
 
-                // only if binding succeeded assign to server
                 pcb = tcp_listen(pcb);
-
                 tcp_accept(pcb, accept_cb);
 
                 return { static_cast<err_t>(ERR_OK), pcb };
@@ -398,11 +375,13 @@ METHOD(Server::close)
         this->pcb = nullptr;
 
         auto onConnection = this->onConnection;
+        this->onConnection = nullptr;
 
         typed_tcpip_callback(tsfn_once_void(
             env,
             "Server::close",
             [pcb, onConnection]() {
+                puts("tcp close called, onconnection release");
                 tcp_close(pcb);
                 onConnection->Release();
             },

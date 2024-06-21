@@ -14,8 +14,8 @@ async function test() {
 
   const payload = "abcdefgh";
 
-  const server = process.argv.length < 3;
-  if (server)
+  const runServer = process.argv.length < 3;
+  if (runServer)
     console.log(`
 This test starts a server, opens a client in a child process that connects to the server and tries to verify that cleanup of threads/exiting happens properly.
 (Not the case right now.)
@@ -23,7 +23,7 @@ This test starts a server, opens a client in a child process that connects to th
 
   const oldLog = console.log;
   const log = (...args: unknown[]) => {
-    oldLog(server ? "S:    " : "   C: ", ...args);
+    oldLog(runServer ? "S:    " : "   C: ", ...args);
   };
   console.log = log;
 
@@ -33,7 +33,7 @@ This test starts a server, opens a client in a child process that connects to th
 
   const nwid = "ff0000ffff000000";
   const address = await startNodeAndJoinNet(
-    `./id/adhoc-test/${server ? "server" : "client"}`,
+    `./id/adhoc-test/${runServer ? "server" : "client"}`,
     nwid,
     (event) =>
       log(
@@ -44,7 +44,7 @@ This test starts a server, opens a client in a child process that connects to th
   );
   log(`Address: ${address}`);
 
-  if (server) {
+  if (runServer) {
     log("Starting server");
 
     const server = new net.Server({}, (socket) => {
@@ -79,30 +79,35 @@ This test starts a server, opens a client in a child process that connects to th
         log("freed node");
       });
       await setTimeout(500);
-      server.close();
+      server.close((err) => {
+        if (err) {
+          console.log(`server closed with error`);
+          console.log(err);
+        }
+      });
     });
   } else {
     const address = process.argv[2];
     log(`Connecting to: ${address}`);
-    const s = net.connect(port, address, () => {
+    const client = net.connect(port, address, () => {
       log("Connected");
-      s.write(Buffer.from(payload));
+      client.write(Buffer.from(payload));
 
       let result = "";
-      s.on("data", (data) => (result += data.toString()));
-      s.on("end", () => {
+      client.on("data", (data) => (result += data.toString()));
+      client.on("end", () => {
         log(`ENDED, total received data: ${result}`);
         assert.strictEqual(result, payload);
       });
 
-      s.on("close", async () => {
+      client.on("close", async () => {
         setTimeout(500);
         log("socket closed, freeing node and hopefully exiting");
         zts.node_free();
       });
     });
 
-    s.on("error", (err) => {
+    client.on("error", (err) => {
       assert(false, err);
     });
   }
