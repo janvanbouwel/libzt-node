@@ -1,6 +1,4 @@
-import { setTimeout } from "timers/promises";
-
-import { startNode, zts, net } from "../index";
+import { net, startNodeAndJoinNet, node } from "../index";
 
 async function main() {
   console.log(`
@@ -18,34 +16,15 @@ usage: <cmd> client <server ip>
 
   // Setup the ZT node
   console.log("starting node");
-  startNode(`./id/${server ? "server" : "client"}`, (event) =>
-    console.log(event),
-  );
-
-  /**
-   * This is not yet very "node"-like, ideally this would be something like
-   * `await node.isOnline()`
-   * `await node.transportReady(nwid)`
-   */
-  console.log("waiting for node to come online");
-  while (!zts.node_is_online()) {
-    await setTimeout(50);
-  }
-  console.log(zts.node_get_id());
-
   const nwid = "ff0000ffff000000";
 
-  zts.net_join(nwid);
+  const addr = await startNodeAndJoinNet(
+    `./id/${server ? "server" : "client"}`,
+    nwid,
+    (event) => console.log(event),
+  );
 
-  while (!zts.net_transport_is_ready(nwid)) {
-    await setTimeout(50);
-  }
-
-  try {
-    console.log(zts.addr_get_str(nwid, true)); // this throws if there is no ipv6 address, for example if network only has ipv4
-  } catch (error) {
-    console.log(error);
-  }
+  console.log(addr);
 
   // code for both server and client is almost drop-in an example from the nodejs documentation
   if (server) {
@@ -79,7 +58,7 @@ usage: <cmd> client <server ip>
     });
     client.on("end", () => {
       console.log("disconnected from server");
-      zts.node_free();
+      node.free();
     });
   }
 }

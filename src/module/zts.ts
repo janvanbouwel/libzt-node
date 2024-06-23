@@ -14,6 +14,8 @@ export declare class InternalSocket {
   ack(length: number): void;
   send(data: Uint8Array): Promise<number>;
   shutdown_wr(): void;
+  ref(): void;
+  unref(): void;
 }
 
 export declare class InternalServer {
@@ -53,6 +55,9 @@ type ZTS = {
   node_get_id(): string;
   node_stop(): void;
   node_free(): void;
+
+  ref(): void;
+  unref(): void;
 
   net_join(nwid: string): void;
   net_leave(nwid: string): void;

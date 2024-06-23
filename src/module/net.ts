@@ -155,7 +155,8 @@ export class Server extends EventEmitter implements node_net.Server {
    * Additionally, if a server is unref'd, then closed and then starts listening again, it will be ref'd again
    */
   unref(): this {
-    this.internalServer?.unref();
+    if (this.internalServer) this.internalServer.unref();
+    else this.once("listening", () => this.internalServer?.unref());
     return this;
   }
 
@@ -309,11 +310,13 @@ class Socket extends Duplex {
   }
 
   ref(): this {
-    throw Error("not yet implemented"); // TODO
+    this.internalSocket.ref();
+    return this;
   }
 
   unref(): this {
-    throw Error("not yet implemented"); // TODO
+    this.internalSocket.unref();
+    return this;
   }
 
   address(): node_net.AddressInfo | {} {
