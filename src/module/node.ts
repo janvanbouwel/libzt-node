@@ -1,26 +1,33 @@
 import { setTimeout } from "timers/promises";
 import { zts } from "./zts";
-import { node } from "..";
 
 // INIT
 
-export function initFromStorage(path: string) {
-  if (state !== NodeState.INIT) {
-    throw Error("Can only init node when stopped");
-  }
-  zts.init_from_storage(path);
-}
-
-export function initFromMemory(key: Uint8Array) {
-  if (state !== NodeState.INIT) {
-    throw Error("Can only init node when stopped");
-  }
-  zts.init_from_memory(key);
+interface NodeStartOpts {
+  /**
+   * If specified, libzt will use this folder to read and write its identity and cached networks, peers... Will be created if it doesn't exist.
+   */
+  path?: string;
+  /**
+   * If specified, libzt will use the provided key as its identity.
+   * TODO: investigate how this interacts with path.
+   */
+  key?: Uint8Array;
+  /**
+   * Whether the libzt node will prevent the node process from exiting. (This only applies to the core libzt node and not to any opened sockets, which have their own ref option.)
+   * Default: false
+   */
+  ref?: boolean;
+  /**
+   * This callback receives info about libzt's events. API highly subject to change to become more idiomatic.
+   * @param event
+   * @returns
+   */
+  eventListener?: (event: number) => void;
 }
 
 enum NodeState {
   INIT,
-  STOPPED,
   STARTED,
   FREED,
 }
@@ -32,39 +39,34 @@ export function setEventHandler(callback: (event: number) => void) {
   onEvent = callback;
 }
 
-export async function start(
-  opts: { ref: boolean } = { ref: true },
-): Promise<string> {
-  switch (state) {
-    case NodeState.STARTED:
-      throw Error("Node already started");
-    case NodeState.FREED:
-      throw Error("Node already freed");
+export async function start(opts?: NodeStartOpts): Promise<string> {
+  if (state !== NodeState.INIT) {
+    throw Error("Node has already been started or freed.");
   }
 
-  if (state === NodeState.INIT) {
-    zts.init_set_event_handler((event) => {
-      onEvent(event);
-    });
+  if (opts) {
+    if (opts.key) {
+      zts.init_from_memory(opts.key);
+    }
+    if (opts.path) {
+      zts.init_from_storage(opts.path);
+    }
+    if (opts.eventListener) {
+      onEvent = opts.eventListener;
+    }
   }
+
   state = NodeState.STARTED;
-  zts.node_start();
-  if (!opts.ref) zts.unref();
+  zts.node_start((event) => {
+    onEvent(event);
+  });
+  if (opts && opts.ref === true) zts.ref();
 
   while (!zts.node_is_online()) {
     await setTimeout(50);
   }
 
   return zts.node_get_id();
-}
-
-export function stop() {
-  if (state !== NodeState.STARTED) {
-    throw Error("Node was not running");
-  }
-
-  state = NodeState.STOPPED;
-  zts.node_stop();
 }
 
 export function free() {
@@ -108,6 +110,13 @@ export async function joinNetwork(nwid: string) {
   }
 }
 
+export function leaveNetwork(nwid: string) {
+  if (state !== NodeState.STARTED) {
+    throw Error("Node was not started");
+  }
+  zts.net_leave(nwid);
+}
+
 export function getIPv4Address(nwid: string) {
   if (state !== NodeState.STARTED) {
     throw Error("Node was not started");
@@ -120,11 +129,4 @@ export function getIPv6Address(nwid: string) {
     throw Error("Node was not started");
   }
   return zts.addr_get_str(nwid, true);
-}
-
-export function leaveNetwork(nwid: string) {
-  if (state !== NodeState.STARTED) {
-    throw Error("Node was not started");
-  }
-  zts.net_leave(nwid);
 }

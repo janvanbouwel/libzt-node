@@ -55,32 +55,6 @@ void event_handler(void* msgPtr)
     }
 }
 
-/**
- * The event handler represents the lifetime of the libzt stack. If it is unreffed (either manually or by node_stop) and
- * it is the only thing keeping the node process itself alive, it will abort and its finaliser frees libzt.
- *
- * If node_free is explicitly called, the tsfn is aborted and in its finaliser the actual node is freed.
- *
- * @param cb { (event: number) => void } Callback that is called for every event.
- */
-VOID_METHOD(init_set_event_handler)
-{
-    NB_ARGS(1);
-    auto cb = ARG_FUNC(0);
-
-    event_callback = [&] {
-        auto tsfn = new Napi::ThreadSafeFunction;
-        *tsfn = Napi::ThreadSafeFunction::New(env, cb, "zts_event_listener", 0, 1, [tsfn](Napi::Env) {
-            delete tsfn;
-            zts_node_free();
-        });
-        return tsfn;
-    }();
-
-    int err = zts_init_set_event_handler(&event_handler);
-    THROW_ERROR(err, "init_set_event_handler");
-}
-
 VOID_METHOD(ref)
 {
     NO_ARGS();
@@ -98,26 +72,35 @@ VOID_METHOD(unref)
 
 // ### node ###
 
+/**
+ * The event handler represents the lifetime of the libzt stack. If it is unreffed (either manually or by node_stop) and
+ * it is the only thing keeping the node process itself alive, it will abort and its finaliser frees libzt.
+ *
+ * If node_free is explicitly called, the tsfn is aborted and in its finaliser the actual node is freed.
+ *
+ * @param cb { (event: number) => void } Callback that is called for every event.
+ */
 VOID_METHOD(node_start)
 {
-    NO_ARGS();
+    NB_ARGS(1);
+    auto cb = ARG_FUNC(0);
+    int err;
 
-    int err = zts_node_start();
+    event_callback = [&] {
+        auto tsfn = new Napi::ThreadSafeFunction;
+        *tsfn = Napi::ThreadSafeFunction::New(env, cb, "zts_event_listener", 0, 1, [tsfn](Napi::Env) {
+            delete tsfn;
+            zts_node_free();
+        });
+        return tsfn;
+    }();
+    event_callback->Unref(env);
+
+    err = zts_init_set_event_handler(&event_handler);
+    THROW_ERROR(err, "node_start:set_event_handler");
+
+    err = zts_node_start();
     THROW_ERROR(err, "node_start");
-
-    if (event_callback)
-        event_callback->Ref(env);
-}
-
-VOID_METHOD(node_stop)
-{
-    NO_ARGS();
-
-    int err = zts_node_stop();
-    THROW_ERROR(err, "node_stop");
-
-    if (event_callback)
-        event_callback->Unref(env);
 }
 
 VOID_METHOD(node_free)
@@ -211,12 +194,10 @@ INIT_ADDON(zts)
     EXPORT_FUNCTION(init_from_memory);
 
     // event
-    EXPORT_FUNCTION(init_set_event_handler);
     EXPORT_FUNCTION(ref);
     EXPORT_FUNCTION(unref);
     // node
     EXPORT_FUNCTION(node_start);
-    EXPORT_FUNCTION(node_stop);
     EXPORT_FUNCTION(node_free);
     EXPORT_FUNCTION(node_is_online);
     EXPORT_FUNCTION(node_get_id);

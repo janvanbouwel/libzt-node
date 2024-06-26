@@ -41,7 +41,6 @@ This test starts a server, opens a client in a child process that connects to th
           .toLowerCase()}`,
       ),
   );
-  node.unref();
   log(`Address: ${address}`);
 
   if (runServer) {

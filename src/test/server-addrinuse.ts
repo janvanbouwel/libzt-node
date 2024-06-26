@@ -1,5 +1,5 @@
 import { setTimeout } from "timers/promises";
-import { net, startNode, startNodeAndJoinNet } from "../index";
+import { net, startNodeAndJoinNet } from "../index";
 
 const main = async () => {
   console.log(

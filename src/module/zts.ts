@@ -48,12 +48,11 @@ declare class UDP {
 type ZTS = {
   init_from_storage(path: string): void;
   init_from_memory(key: Uint8Array): void;
-  init_set_event_handler(callback: (event: number) => void): void;
 
-  node_start(): void;
+  node_start(callback: (event: number) => void): void;
+
   node_is_online(): boolean;
   node_get_id(): string;
-  node_stop(): void;
   node_free(): void;
 
   ref(): void;

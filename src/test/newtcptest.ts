@@ -1,6 +1,6 @@
 import { setTimeout } from "timers/promises";
 
-import { startNode, net, SocketErrors, events, node } from "../index";
+import { net, SocketErrors, events, node } from "../index";
 import { createReadStream, createWriteStream, existsSync } from "fs";
 import { Duplex, Transform, PassThrough } from "stream";
 
@@ -87,16 +87,16 @@ example usage: server-client pair on adhoc network, server sends "./send" and cl
 
   console.log("starting node");
 
-  node.initFromStorage(`./id/${server ? "server" : "client"}`);
-
-  node.setEventHandler((event) => {
-    console.log(
-      `       e: ${event}, ${events[event]
-        .replace("ZTS_EVENT_", "")
-        .toLowerCase()}`,
-    );
+  const nodeID = await node.start({
+    path: `./id/${server ? "server" : "client"}`,
+    eventListener: (event) => {
+      console.log(
+        `       e: ${event}, ${events[event]
+          .replace("ZTS_EVENT_", "")
+          .toLowerCase()}`,
+      );
+    },
   });
-  const nodeID = await node.start();
 
   console.log(nodeID);
 
