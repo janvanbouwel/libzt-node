@@ -156,16 +156,21 @@ VOID_METHOD(Socket::connect)
 
     ip_addr_t ip_addr;
     ipaddr_aton(address.c_str(), &ip_addr);
-
     typed_tcpip_callback([this, ip_addr, port]() {
-        if (! this->pcb)
+        if (! this->pcb) {
             this->pcb = tcp_new();
+        }
         this->init(this->pcb);
-        tcp_connect(pcb, &ip_addr, port, [](void* arg, struct tcp_pcb* tpcb, err_t err) -> err_t {
+
+        int err = tcp_connect(pcb, &ip_addr, port, [](void* arg, struct tcp_pcb* tpcb, err_t err) -> err_t {
             auto thiz = reinterpret_cast<Socket*>(arg);
-            thiz->emit->BlockingCall([](TSFN_ARGS) { jsCallback.Call({ STRING("connect") }); });
+            thiz->emit->BlockingCall([](TSFN_ARGS) { jsCallback.Call({ STRING("connect") /*TODO: address here*/ }); });
             return ERR_OK;
         });
+
+        if (err != ERR_OK) {
+            this->emit->BlockingCall([err](TSFN_ARGS) { jsCallback({ STRING("connect_error"), NUMBER(err) }); });
+        }
     });
 }
 

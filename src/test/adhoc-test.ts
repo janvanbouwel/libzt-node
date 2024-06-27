@@ -31,15 +31,12 @@ This test starts a server, opens a client in a child process that connects to th
   const port = 5000;
 
   const nwid = "ff0000ffff000000";
-  const address = await startNodeAndJoinNet(
-    `./id/adhoc-test/${runServer ? "server" : "client"}`,
-    nwid,
-    (event) =>
-      log(
-        `       e: ${event}, ${events[event]
-          .replace("ZTS_EVENT_", "")
-          .toLowerCase()}`,
-      ),
+  const address = await startNodeAndJoinNet(undefined, nwid, (event) =>
+    log(
+      `       e: ${event}, ${events[event]
+        .replace("ZTS_EVENT_", "")
+        .toLowerCase()}`,
+    ),
   );
   log(`Address: ${address}`);
 

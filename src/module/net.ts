@@ -1,9 +1,16 @@
 import { EventEmitter } from "node:events";
-import { InternalError, InternalServer, InternalSocket, zts } from "./zts";
+import {
+  InternalError,
+  InternalServer,
+  InternalSocket,
+  SocketErrors,
+  zts,
+} from "./zts";
 import { Duplex, DuplexOptions, PassThrough } from "node:stream";
 
 import * as node_net from "node:net";
 import { checkPort } from "./util";
+import { setTimeout } from "node:timers/promises";
 
 export class Server extends EventEmitter implements node_net.Server {
   listening = false;
@@ -304,9 +311,26 @@ class Socket extends Duplex {
   ): this {
     if (this.connected) throw Error("Already connected");
 
-    this.internalSocket.connect(options.port, options.host ?? "127.0.0.1");
     if (connectionListener) this.once("connect", connectionListener);
+
+    this._connect(options.port, options.host ?? "127.0.0.1", 120);
     return this;
+  }
+
+  private _connect(port: number, address: string, attempts: number) {
+    this.internalEvents.once("connect_error", async (err: number) => {
+      if (err === SocketErrors.ERR_RTE && attempts > 0) {
+        await setTimeout(250);
+        this._connect(port, address, attempts - 1);
+      } else {
+        const error = Error("Socket connect error");
+        (error as unknown as { code: number }).code = err;
+        // TODO: cleanup tsfn properly
+        this.destroy(error);
+      }
+    });
+
+    this.internalSocket.connect(port, address);
   }
 
   ref(): this {
