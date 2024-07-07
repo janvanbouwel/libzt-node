@@ -45,6 +45,15 @@ declare class UDP {
   unref(): void;
 }
 
+export interface AddrInfo {
+  localAddr: string;
+  localPort: number;
+  localFamily: "IPv4" | "IPv6";
+  remoteAddr: string;
+  remotePort: number;
+  remoteFamily: "IPv4" | "IPv6";
+}
+
 type ZTS = {
   init_from_storage(path: string): void;
   init_from_memory(key: Uint8Array): void;
@@ -76,6 +85,7 @@ type ZTS = {
       onConnection: (
         error: InternalError | undefined,
         socket: InternalSocket,
+        addrInfo: AddrInfo,
       ) => void,
     ): Promise<InternalServer>;
   };

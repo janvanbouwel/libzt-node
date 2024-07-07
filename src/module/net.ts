@@ -1,5 +1,6 @@
 import { EventEmitter } from "node:events";
 import {
+  AddrInfo,
   InternalError,
   InternalServer,
   InternalSocket,
@@ -33,6 +34,7 @@ export class Server extends EventEmitter implements node_net.Server {
   private internalConnectionHandler(
     error: InternalError | undefined,
     socket: InternalSocket,
+    addrInfo: AddrInfo,
   ): void {
     if (
       this.maxConnections !== undefined &&
@@ -45,7 +47,7 @@ export class Server extends EventEmitter implements node_net.Server {
       return;
     }
 
-    const s = new Socket({}, socket);
+    const s = new Socket({}, socket, addrInfo);
 
     this.connAmount++;
     s.once("close", () => {
@@ -62,7 +64,7 @@ export class Server extends EventEmitter implements node_net.Server {
       this.internalServer = await zts.Server.createServer(
         port,
         host,
-        (error, socket) => this.internalConnectionHandler(error, socket),
+        this.internalConnectionHandler.bind(this),
       );
       this.listening = true;
       this.emit("listening");
@@ -182,11 +184,18 @@ export function createServer(
  *
  */
 
-class Socket extends Duplex {
+class Socket extends Duplex /*implements node_net.Socket*/ {
   private internalEvents = new EventEmitter();
   private internalSocket: InternalSocket;
 
   private connected = false;
+
+  localAddress?: string | undefined;
+  localPort?: number | undefined;
+  localFamily?: string | undefined;
+  remoteAddress?: string | undefined;
+  remotePort?: number | undefined;
+  remoteFamily?: string | undefined;
 
   bytesRead = 0;
   bytesWritten = 0;
@@ -198,6 +207,7 @@ class Socket extends Duplex {
   constructor(
     options: node_net.SocketConstructorOpts,
     internal?: InternalSocket,
+    addrInfo?: AddrInfo,
   ) {
     super({
       allowHalfOpen: options.allowHalfOpen ?? false,
@@ -206,11 +216,13 @@ class Socket extends Duplex {
     } as DuplexOptions);
 
     if (internal) this.connected = true;
+    if (addrInfo) this.setAddrInfo(addrInfo);
     this.internalSocket = internal ?? new zts.Socket();
 
     // events from native socket
-    this.internalEvents.on("connect", () => {
+    this.internalEvents.on("connect", (addrInfo: AddrInfo) => {
       this.connected = true;
+      this.setAddrInfo(addrInfo);
       this.emit("connect");
     });
     this.internalEvents.on("data", (data?: Uint8Array) => {
@@ -254,6 +266,15 @@ class Socket extends Duplex {
       // if (this.receiver.readableLength === 0 && this.receiver.isPaused()) this.receiver.resume();
     });
     this.receiver.pause();
+  }
+
+  protected setAddrInfo(addrInfo: AddrInfo) {
+    this.localAddress = addrInfo.localAddr;
+    this.localPort = addrInfo.localPort;
+    this.localFamily = addrInfo.localFamily;
+    this.remoteAddress = addrInfo.remoteAddr;
+    this.remotePort = addrInfo.remotePort;
+    this.remoteFamily = addrInfo.remoteFamily;
   }
 
   _read() {
@@ -344,7 +365,13 @@ class Socket extends Duplex {
   }
 
   address(): node_net.AddressInfo | {} {
-    throw Error("not yet implemented"); // TODO
+    if (this.localAddress) {
+      return {
+        address: this.localAddress,
+        port: this.localPort,
+        family: this.localFamily,
+      };
+    } else return {};
   }
 
   setTimeout(timeout: number, callback?: () => void): this {

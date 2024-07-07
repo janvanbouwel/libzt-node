@@ -164,7 +164,9 @@ VOID_METHOD(Socket::connect)
 
         int err = tcp_connect(pcb, &ip_addr, port, [](void* arg, struct tcp_pcb* tpcb, err_t err) -> err_t {
             auto thiz = reinterpret_cast<Socket*>(arg);
-            thiz->emit->BlockingCall([](TSFN_ARGS) { jsCallback.Call({ STRING("connect") /*TODO: address here*/ }); });
+            thiz->emit->BlockingCall([addr = addr_info(tpcb)](TSFN_ARGS) {
+                jsCallback.Call({ STRING("connect"), convert_addr_info(env, addr) });
+            });
             return ERR_OK;
         });
 
@@ -292,7 +294,7 @@ err_t accept_cb(void* arg, tcp_pcb* new_pcb, err_t err)
 
     // delay accepting connection until callback has been set up.
     tcp_backlog_delayed(new_pcb);
-    int tsfnErr = onConnection->BlockingCall([err, new_pcb](TSFN_ARGS) {
+    int tsfnErr = onConnection->BlockingCall([err, new_pcb, addr = addr_info(new_pcb)](TSFN_ARGS) {
         if (err < 0) {
             jsCallback.Call({ ERROR("Accept error", err).Value() });
             return;
@@ -302,7 +304,7 @@ err_t accept_cb(void* arg, tcp_pcb* new_pcb, err_t err)
         auto socket = Socket::Unwrap(socketObj);
         socket->set_pcb(new_pcb);
 
-        jsCallback.Call({ UNDEFINED, socketObj });
+        jsCallback.Call({ UNDEFINED, socketObj, convert_addr_info(env, addr) });
 
         socket->init(new_pcb);
 
