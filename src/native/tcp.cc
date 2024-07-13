@@ -55,6 +55,19 @@ CLASS(Socket)
         if (emit)
             emit->Unref(env);
     }
+
+    VOID_METHOD(nagle)
+    {
+        NB_ARGS(1);
+        bool enable = ARG_BOOLEAN(0);
+
+        typed_tcpip_callback([pcb = this->pcb, enable]() {
+            if (enable)
+                tcp_nagle_enable(pcb);
+            else
+                tcp_nagle_disable(pcb);
+        });
+    }
 };
 
 Napi::FunctionReference* Socket::constructor = nullptr;
@@ -69,7 +82,8 @@ CLASS_INIT_IMPL(Socket)
           CLASS_INSTANCE_METHOD(Socket, ack),
           CLASS_INSTANCE_METHOD(Socket, shutdown_wr),
           CLASS_INSTANCE_METHOD(Socket, ref),
-          CLASS_INSTANCE_METHOD(Socket, unref) });
+          CLASS_INSTANCE_METHOD(Socket, unref),
+          CLASS_INSTANCE_METHOD(Socket, nagle) });
 
     CLASS_SET_CONSTRUCTOR(SocketClass);
 

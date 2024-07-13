@@ -378,8 +378,9 @@ class Socket extends Duplex /*implements node_net.Socket*/ {
     throw Error("not yet implemented"); // TODO
   }
 
-  setNoDelay(noDelay?: boolean): this {
-    throw Error("not yet implemented"); // TODO
+  setNoDelay(noDelay: boolean = true): this {
+    this.internalSocket.nagle(!noDelay);
+    return this;
   }
 
   setKeepAlive(enable?: boolean, initialDelay?: number): this {

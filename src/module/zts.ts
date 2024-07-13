@@ -16,6 +16,7 @@ export declare class InternalSocket {
   shutdown_wr(): void;
   ref(): void;
   unref(): void;
+  nagle(enable: boolean): void;
 }
 
 export declare class InternalServer {
