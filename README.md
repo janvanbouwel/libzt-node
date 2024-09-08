@@ -6,7 +6,7 @@ This project is very early access, please open a github issue for bugs or featur
 
 ## Installation
 
-Prebuild binaries are included with the npm package for a number of platforms, so installing should be as easy as:
+Prebuilt binaries are included with the npm package for a number of platforms, so installing should be as easy as:
 
 ```bash
 npm install libzt
@@ -16,29 +16,24 @@ npm install libzt
 
 ### Initialisation
 
-ZeroTier has to be initialised before it can be used. This API is very WIP. See also the official [libzt docs](https://docs.zerotier.com/sockets).
+ZeroTier has to be initialised before it can be used. See also the official [libzt docs](https://docs.zerotier.com/sockets).
 
 ```ts
-import { startNode, zts } from "libzt";
+import { node } from "libzt";
 
 // initialises node from storage, new id will be created if path doesn't exist
-startNode("path/to/id", (event) => console.log(event));
+const nodeId = await node.start({
+  path: "path/to/id",
+  eventListener: (event) => console.log(event),
+});
 
-while (!zts.node_is_online()) {
-  // will be made asynchronous in the future
-  await setTimeout(50);
-}
-console.log(zts.node_get_id()); // the node's id
+console.log(nodeId); // the node's id
 
 const nwid = "ff0000ffff000000"; // Zerotier network id
-zts.net_join(nwid);
+await node.joinNetwork(nwid);
 
-while (!zts.net_transport_is_ready(nwid)) {
-  await setTimeout(50);
-}
-
-// get assigned address, second argument is true for ipv6
-const address = zts.addr_get_str(nwid, true);
+// get assigned address
+const address = node.getIPv6Address(nwid); // or IPv4
 ```
 
 ### Sockets

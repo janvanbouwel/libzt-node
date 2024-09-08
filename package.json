@@ -1,6 +1,6 @@
 {
   "name": "libzt",
-  "version": "0.1.6",
+  "version": "0.2.0",
   "description": "Idiomatic node bindings for libzt.",
   "keywords": [
     "zerotier",
@@ -29,12 +29,12 @@
     "pkg-prebuilds": "^1.0.0"
   },
   "devDependencies": {
-    "@types/node": "^20.12.8",
-    "@typescript-eslint/eslint-plugin": "^7.8.0",
-    "@typescript-eslint/parser": "^7.8.0",
-    "eslint": "^8.57.0",
+    "@types/node": "^22.5.4",
+    "@typescript-eslint/eslint-plugin": "^8.4.0",
+    "@typescript-eslint/parser": "^8.4.0",
+    "eslint": "^9.10.0",
     "prettier": "^3.2.5",
-    "rimraf": "^5.0.5",
+    "rimraf": "^6.0.1",
     "typescript": "^5.4.5"
   },
   "files": [
