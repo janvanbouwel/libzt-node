@@ -8,7 +8,7 @@ import assert = require("node:assert");
 import { fork } from "node:child_process";
 
 async function test() {
-  setTimeout(30_000, undefined, { ref: false }).then(() =>
+  setTimeout(50_000, undefined, { ref: false }).then(() =>
     assert(false, "Test took too long"),
   );
 
@@ -31,15 +31,12 @@ This test starts a server, opens a client in a child process that connects to th
   const port = 5000;
 
   const nwid = "ff0000ffff000000";
-  const address = await startNodeAndJoinNet(
-    `./id/adhoc-test/${runServer ? "server" : "client"}`,
-    nwid,
-    (event) =>
-      log(
-        `       e: ${event}, ${events[event]
-          .replace("ZTS_EVENT_", "")
-          .toLowerCase()}`,
-      ),
+  const address = await startNodeAndJoinNet(undefined, nwid, (event) =>
+    log(
+      `       e: ${event}, ${events[event]
+        .replace("ZTS_EVENT_", "")
+        .toLowerCase()}`,
+    ),
   );
   log(`Address: ${address}`);
 
@@ -48,6 +45,13 @@ This test starts a server, opens a client in a child process that connects to th
 
     const server = new net.Server({}, (socket) => {
       log("socket connected");
+      log("local addr: ", socket.address());
+      log(
+        "remote addr: ",
+        socket.remoteAddress,
+        socket.remotePort,
+        socket.remoteFamily,
+      );
       socket.once("data", (data) => {
         log(`Received data: ${data}`);
         log(`Sending data:  ${data}`);
@@ -89,6 +93,14 @@ This test starts a server, opens a client in a child process that connects to th
     log(`Connecting to: ${address}`);
     const client = net.connect(port, address, () => {
       log("Connected");
+      log("local addr: ", client.address());
+      log(
+        "remote addr: ",
+        client.remoteAddress,
+        client.remotePort,
+        client.remoteFamily,
+      );
+
       client.write(Buffer.from(payload));
 
       let result = "";

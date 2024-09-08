@@ -45,6 +45,7 @@ available options:
     help                    // prints this help and exits
     client <server ip>      // starts a client, if unspecified starts a server
     port <port>             // specify a port, otherwise 5555
+    id <path/to/id>         // specify storage location of id, otherwise kept in memory
     swap                    // if specified: server receives, client sends
                             // default: server sends, client receives
     filename <filename>     // path to file that should be sent or written to
@@ -64,6 +65,8 @@ example usage: server-client pair on adhoc network, server sends "./send" and cl
 
   const port =
     argIndex("port") < 0 ? 5555 : parseInt(arg(argIndex("port") + 1));
+
+  const path = argIndex("id") < 0 ? undefined : arg(argIndex("id") + 1);
 
   const send = argIndex("swap") < 0 ? server : !server;
   const handleSocket = send ? sendFile : recvFile;
@@ -88,7 +91,7 @@ example usage: server-client pair on adhoc network, server sends "./send" and cl
   console.log("starting node");
 
   const nodeID = await node.start({
-    path: `./id/${server ? "server" : "client"}`,
+    path,
     eventListener: (event) => {
       console.log(
         `       e: ${event}, ${events[event]

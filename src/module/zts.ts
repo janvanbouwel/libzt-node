@@ -16,6 +16,7 @@ export declare class InternalSocket {
   shutdown_wr(): void;
   ref(): void;
   unref(): void;
+  nagle(enable: boolean): void;
 }
 
 export declare class InternalServer {
@@ -43,6 +44,15 @@ declare class UDP {
 
   ref(): void;
   unref(): void;
+}
+
+export interface AddrInfo {
+  localAddr: string;
+  localPort: number;
+  localFamily: "IPv4" | "IPv6";
+  remoteAddr: string;
+  remotePort: number;
+  remoteFamily: "IPv4" | "IPv6";
 }
 
 type ZTS = {
@@ -76,6 +86,7 @@ type ZTS = {
       onConnection: (
         error: InternalError | undefined,
         socket: InternalSocket,
+        addrInfo: AddrInfo,
       ) => void,
     ): Promise<InternalServer>;
   };

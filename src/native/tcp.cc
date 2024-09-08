@@ -55,6 +55,19 @@ CLASS(Socket)
         if (emit)
             emit->Unref(env);
     }
+
+    VOID_METHOD(nagle)
+    {
+        NB_ARGS(1);
+        bool enable = ARG_BOOLEAN(0);
+
+        typed_tcpip_callback([pcb = this->pcb, enable]() {
+            if (enable)
+                tcp_nagle_enable(pcb);
+            else
+                tcp_nagle_disable(pcb);
+        });
+    }
 };
 
 Napi::FunctionReference* Socket::constructor = nullptr;
@@ -69,7 +82,8 @@ CLASS_INIT_IMPL(Socket)
           CLASS_INSTANCE_METHOD(Socket, ack),
           CLASS_INSTANCE_METHOD(Socket, shutdown_wr),
           CLASS_INSTANCE_METHOD(Socket, ref),
-          CLASS_INSTANCE_METHOD(Socket, unref) });
+          CLASS_INSTANCE_METHOD(Socket, unref),
+          CLASS_INSTANCE_METHOD(Socket, nagle) });
 
     CLASS_SET_CONSTRUCTOR(SocketClass);
 
@@ -156,16 +170,23 @@ VOID_METHOD(Socket::connect)
 
     ip_addr_t ip_addr;
     ipaddr_aton(address.c_str(), &ip_addr);
-
     typed_tcpip_callback([this, ip_addr, port]() {
-        if (! this->pcb)
+        if (! this->pcb) {
             this->pcb = tcp_new();
+        }
         this->init(this->pcb);
-        tcp_connect(pcb, &ip_addr, port, [](void* arg, struct tcp_pcb* tpcb, err_t err) -> err_t {
+
+        int err = tcp_connect(pcb, &ip_addr, port, [](void* arg, struct tcp_pcb* tpcb, err_t err) -> err_t {
             auto thiz = reinterpret_cast<Socket*>(arg);
-            thiz->emit->BlockingCall([](TSFN_ARGS) { jsCallback.Call({ STRING("connect") }); });
+            thiz->emit->BlockingCall([addr = addr_info(tpcb)](TSFN_ARGS) {
+                jsCallback.Call({ STRING("connect"), convert_addr_info(env, addr) });
+            });
             return ERR_OK;
         });
+
+        if (err != ERR_OK) {
+            this->emit->BlockingCall([err](TSFN_ARGS) { jsCallback({ STRING("connect_error"), NUMBER(err) }); });
+        }
     });
 }
 
@@ -287,7 +308,7 @@ err_t accept_cb(void* arg, tcp_pcb* new_pcb, err_t err)
 
     // delay accepting connection until callback has been set up.
     tcp_backlog_delayed(new_pcb);
-    int tsfnErr = onConnection->BlockingCall([err, new_pcb](TSFN_ARGS) {
+    int tsfnErr = onConnection->BlockingCall([err, new_pcb, addr = addr_info(new_pcb)](TSFN_ARGS) {
         if (err < 0) {
             jsCallback.Call({ ERROR("Accept error", err).Value() });
             return;
@@ -297,7 +318,7 @@ err_t accept_cb(void* arg, tcp_pcb* new_pcb, err_t err)
         auto socket = Socket::Unwrap(socketObj);
         socket->set_pcb(new_pcb);
 
-        jsCallback.Call({ UNDEFINED, socketObj });
+        jsCallback.Call({ UNDEFINED, socketObj, convert_addr_info(env, addr) });
 
         socket->init(new_pcb);
 
