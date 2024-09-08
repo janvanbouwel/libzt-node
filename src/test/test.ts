@@ -1,6 +1,6 @@
 import { setTimeout } from "timers/promises";
 
-import { startNode, zts, dgram, net } from "../index";
+import { dgram, net, startNodeAndJoinNet } from "../index";
 
 async function main() {
   console.log(`
@@ -17,28 +17,12 @@ usage: <cmd> udp|tcp server|client <port> <server ip>
   const host = process.argv[5];
 
   console.log("starting node");
-  startNode(undefined, (event) => console.log(event));
-
-  console.log("waiting for node to come online");
-  while (!zts.node_is_online()) {
-    await setTimeout(50);
-  }
-
-  console.log(zts.node_get_id());
-
   const nwid = "ff0000ffff000000";
+  const addr = await startNodeAndJoinNet(undefined, nwid, (event) =>
+    console.log(event),
+  );
 
-  zts.net_join(nwid);
-
-  while (!zts.net_transport_is_ready(nwid)) {
-    await setTimeout(50);
-  }
-
-  try {
-    console.log(zts.addr_get_str(nwid, true));
-  } catch (error) {
-    console.log(error);
-  }
+  console.log(addr);
 
   if (protocol === "udp") {
     if (server) {

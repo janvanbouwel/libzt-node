@@ -2,7 +2,7 @@ import { setTimeout } from "timers/promises";
 
 // import net = require("node:net");
 
-import { events, net, startNodeAndJoinNet, zts } from "../index";
+import { events, net, node, startNodeAndJoinNet } from "../index";
 import * as util from "node:util";
 import assert = require("node:assert");
 import { fork } from "node:child_process";
@@ -18,7 +18,6 @@ async function test() {
   if (runServer)
     console.log(`
 This test starts a server, opens a client in a child process that connects to the server and tries to verify that cleanup of threads/exiting happens properly.
-(Not the case right now.)
     `);
 
   const oldLog = console.log;
@@ -60,6 +59,7 @@ This test starts a server, opens a client in a child process that connects to th
         throw error;
       });
     });
+    server.unref();
     server.listen(port, "::", () => {
       log(`Listening, address: ${util.format(server.address())}`);
     });
@@ -75,16 +75,14 @@ This test starts a server, opens a client in a child process that connects to th
 
       server.on("close", () => {
         log("closed server");
-        zts.node_free();
-        log("freed node");
       });
       await setTimeout(500);
-      server.close((err) => {
-        if (err) {
-          console.log(`server closed with error`);
-          console.log(err);
-        }
-      });
+      // server.close((err) => {
+      //   if (err) {
+      //     console.log(`server closed with error`);
+      //     console.log(err);
+      //   }
+      // });
     });
   } else {
     const address = process.argv[2];
@@ -102,8 +100,7 @@ This test starts a server, opens a client in a child process that connects to th
 
       client.on("close", async () => {
         setTimeout(500);
-        log("socket closed, freeing node and hopefully exiting");
-        zts.node_free();
+        log("socket closed");
       });
     });
 

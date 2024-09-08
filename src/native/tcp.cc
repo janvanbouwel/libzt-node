@@ -27,7 +27,7 @@ CLASS(Socket)
         this->pcb = pcb;
     }
 
-    Napi::ThreadSafeFunction emit;
+    Napi::ThreadSafeFunction* emit;
 
     void emit_close();
 
@@ -42,6 +42,19 @@ CLASS(Socket)
     METHOD(send);
     VOID_METHOD(ack);
     VOID_METHOD(shutdown_wr);
+
+    VOID_METHOD(ref)
+    {
+        NO_ARGS();
+        if (emit)
+            emit->Ref(env);
+    }
+    VOID_METHOD(unref)
+    {
+        NO_ARGS();
+        if (emit)
+            emit->Unref(env);
+    }
 };
 
 Napi::FunctionReference* Socket::constructor = nullptr;
@@ -54,7 +67,9 @@ CLASS_INIT_IMPL(Socket)
           CLASS_INSTANCE_METHOD(Socket, connect),
           CLASS_INSTANCE_METHOD(Socket, send),
           CLASS_INSTANCE_METHOD(Socket, ack),
-          CLASS_INSTANCE_METHOD(Socket, shutdown_wr) });
+          CLASS_INSTANCE_METHOD(Socket, shutdown_wr),
+          CLASS_INSTANCE_METHOD(Socket, ref),
+          CLASS_INSTANCE_METHOD(Socket, unref) });
 
     CLASS_SET_CONSTRUCTOR(SocketClass);
 
@@ -64,14 +79,15 @@ CLASS_INIT_IMPL(Socket)
 
 void Socket::emit_close()
 {
-    emit.BlockingCall([](TSFN_ARGS) { jsCallback.Call({ STRING("close") }); });
-    emit.Release();
+    emit->BlockingCall([](TSFN_ARGS) { jsCallback.Call({ STRING("close") }); });
+    emit->Release();
+    emit = nullptr;
 }
 
 err_t tcp_receive_cb(void* arg, struct tcp_pcb* tpcb, struct pbuf* p, err_t err)
 {
     auto thiz = reinterpret_cast<Socket*>(arg);
-    thiz->emit.BlockingCall([p](TSFN_ARGS) {
+    thiz->emit->BlockingCall([p](TSFN_ARGS) {
         if (! p) {
             jsCallback.Call({ STRING("data"), UNDEFINED });
         }
@@ -93,7 +109,7 @@ err_t tcp_receive_cb(void* arg, struct tcp_pcb* tpcb, struct pbuf* p, err_t err)
 err_t tcp_sent_cb(void* arg, struct tcp_pcb* tpcb, u16_t len)
 {
     auto thiz = reinterpret_cast<Socket*>(arg);
-    thiz->emit.BlockingCall([len](TSFN_ARGS) { jsCallback.Call({ STRING("sent"), NUMBER(len) }); });
+    thiz->emit->BlockingCall([len](TSFN_ARGS) { jsCallback.Call({ STRING("sent"), NUMBER(len) }); });
     return ERR_OK;
 }
 
@@ -104,20 +120,21 @@ void tcp_err_cb(void* arg, err_t err)
 
     if (err == ERR_CLSD) {
         thiz->emit_close();
-        return;
     }
-
-    thiz->emit.BlockingCall([err](TSFN_ARGS) {
-        jsCallback.Call({ STRING("error"), MAKE_ERROR("TCP error", ERR_FIELD("code", NUMBER(err))).Value() });
-    });
-    thiz->emit.Release();
+    else {
+        thiz->emit->BlockingCall([err](TSFN_ARGS) {
+            jsCallback.Call({ STRING("error"), MAKE_ERROR("TCP error", ERR_FIELD("code", NUMBER(err))).Value() });
+        });
+        thiz->emit->Release();
+        thiz->emit = nullptr;
+    }
 }
 
 VOID_METHOD(Socket::setEmitter)
 {
     NB_ARGS(1);
     auto emit = ARG_FUNC(0);
-    this->emit = Napi::ThreadSafeFunction::New(env, emit, "tcpEventEmitter", 0, 1);
+    this->emit = TSFN_ONCE(emit, "TCP::EventEmitter");
 }
 
 void Socket::init(tcp_pcb* pcb)
@@ -146,7 +163,7 @@ VOID_METHOD(Socket::connect)
         this->init(this->pcb);
         tcp_connect(pcb, &ip_addr, port, [](void* arg, struct tcp_pcb* tpcb, err_t err) -> err_t {
             auto thiz = reinterpret_cast<Socket*>(arg);
-            thiz->emit.BlockingCall([](TSFN_ARGS) { jsCallback.Call({ STRING("connect") }); });
+            thiz->emit->BlockingCall([](TSFN_ARGS) { jsCallback.Call({ STRING("connect") }); });
             return ERR_OK;
         });
     });
@@ -381,7 +398,6 @@ METHOD(Server::close)
             env,
             "Server::close",
             [pcb, onConnection]() {
-                puts("tcp close called, onconnection release");
                 tcp_close(pcb);
                 onConnection->Release();
             },

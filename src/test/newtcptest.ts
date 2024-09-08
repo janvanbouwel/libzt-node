@@ -1,6 +1,6 @@
 import { setTimeout } from "timers/promises";
 
-import { startNode, zts, net, SocketErrors, events } from "../index";
+import { net, SocketErrors, events, node } from "../index";
 import { createReadStream, createWriteStream, existsSync } from "fs";
 import { Duplex, Transform, PassThrough } from "stream";
 
@@ -86,30 +86,25 @@ example usage: server-client pair on adhoc network, server sends "./send" and cl
   // setting up node
 
   console.log("starting node");
-  startNode(`./id/${server ? "server" : "client"}`, (event) => {
-    console.log(
-      `       e: ${event}, ${events[event]
-        .replace("ZTS_EVENT_", "")
-        .toLowerCase()}`,
-    );
+
+  const nodeID = await node.start({
+    path: `./id/${server ? "server" : "client"}`,
+    eventListener: (event) => {
+      console.log(
+        `       e: ${event}, ${events[event]
+          .replace("ZTS_EVENT_", "")
+          .toLowerCase()}`,
+      );
+    },
   });
 
-  console.log("waiting for node to come online");
-  while (!zts.node_is_online()) {
-    await setTimeout(50);
-  }
+  console.log(nodeID);
 
-  console.log(zts.node_get_id());
-
-  zts.net_join(nwid);
-
-  while (!zts.net_transport_is_ready(nwid)) {
-    await setTimeout(50);
-  }
+  await node.joinNetwork(nwid);
 
   try {
     console.log(
-      `Node ${ipv6 ? "ipv6" : "ipv4"} address: ${zts.addr_get_str(nwid, ipv6)}`,
+      `Node ${ipv6 ? "ipv6" : "ipv4"} address: ${ipv6 ? node.getIPv6Address(nwid) : node.getIPv4Address(nwid)}`,
     );
   } catch (error) {
     console.log(`Couldn't get ip address with ipv6-mode: ${ipv6}`);
@@ -137,7 +132,7 @@ example usage: server-client pair on adhoc network, server sends "./send" and cl
   } else {
     await setTimeout(1000);
     const socket = net.connect(port, serverIp, () => {
-      socket.on("close", () => zts.node_free());
+      socket.on("close", () => node.free());
       console.log("connected");
 
       handleSocket(socket, filename);
