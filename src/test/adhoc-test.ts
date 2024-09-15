@@ -2,7 +2,7 @@ import { setTimeout } from "timers/promises";
 
 // import net = require("node:net");
 
-import { events, net, node, startNodeAndJoinNet } from "../index";
+import { ZtsNodeEvent, net, node, startNodeAndJoinNet } from "../index";
 import * as util from "node:util";
 import assert = require("node:assert");
 import { fork } from "node:child_process";
@@ -33,7 +33,7 @@ This test starts a server, opens a client in a child process that connects to th
   const nwid = "ff0000ffff000000";
   const address = await startNodeAndJoinNet(undefined, nwid, (event) =>
     log(
-      `       e: ${event}, ${events[event]
+      `       e: ${event}, ${ZtsNodeEvent[event]
         .replace("ZTS_EVENT_", "")
         .toLowerCase()}`,
     ),

@@ -23,7 +23,8 @@ export async function startNodeAndJoinNet(
   }
 }
 
-export { events, SocketErrors } from "./module/zts";
+export * from "./native/enums";
+
 export { node };
 export * as dgram from "./module/dgram";
 export * as net from "./module/net";

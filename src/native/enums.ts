@@ -1,107 +1,4 @@
-export interface ZtsError extends Error {
-  code?: number;
-  errno?: number;
-}
-
-export interface InternalError extends Error {
-  code?: SocketErrors;
-}
-
-export declare class InternalSocket {
-  constructor();
-  setEmitter(emit: (event: string, ...args: unknown[]) => boolean): void;
-  connect(port: number, address: string): void;
-  ack(length: number): void;
-  send(data: Uint8Array): Promise<number>;
-  shutdown_wr(): void;
-  ref(): void;
-  unref(): void;
-  nagle(enable: boolean): void;
-}
-
-export declare class InternalServer {
-  address(): { port: number; address: string; family: "IPv6" | "IPv4" };
-  close(): Promise<void>;
-  ref(): void;
-  unref(): void;
-}
-
-declare class UDP {
-  constructor(
-    ipv6: boolean,
-    recvCallback: (data: Uint8Array, addr: string, port: number) => void,
-  );
-
-  send(data: Uint8Array, addr: string, port: number): Promise<void>;
-  bind(addr: string, port: number): Promise<void>;
-  close(): Promise<void>;
-
-  address(): { port: number; address: string; family: "udp6" | "udp4" };
-  remoteAddress(): { port: number; address: string; family: "udp6" | "udp4" };
-
-  connect(addr: string, port: number): Promise<void>;
-  disconnect(): void;
-
-  ref(): void;
-  unref(): void;
-}
-
-export interface AddrInfo {
-  localAddr: string;
-  localPort: number;
-  localFamily: "IPv4" | "IPv6";
-  remoteAddr: string;
-  remotePort: number;
-  remoteFamily: "IPv4" | "IPv6";
-}
-
-type ZTS = {
-  init_from_storage(path: string): void;
-  init_from_memory(key: Uint8Array): void;
-
-  node_start(callback: (event: number) => void): void;
-
-  node_is_online(): boolean;
-  node_get_id(): string;
-  node_free(): void;
-
-  ref(): void;
-  unref(): void;
-
-  net_join(nwid: string): void;
-  net_leave(nwid: string): void;
-  net_transport_is_ready(nwid: string): boolean;
-
-  addr_get_str(nwid: string, ipv6: boolean): string;
-
-  UDP: new (
-    ipv6: boolean,
-    recvCallback: (data: Uint8Array, addr: string, port: number) => void,
-  ) => UDP;
-
-  Server: {
-    createServer(
-      port: number,
-      address: string,
-      onConnection: (
-        error: InternalError | undefined,
-        socket: InternalSocket,
-        addrInfo: AddrInfo,
-      ) => void,
-    ): Promise<InternalServer>;
-  };
-  Socket: new () => InternalSocket;
-};
-
-import * as loadBinding from "pkg-prebuilds";
-import * as options from "../binding-options";
-export const zts = loadBinding<ZTS>(
-  // project root
-  `${__dirname}/../..`,
-  options,
-);
-
-export enum errors {
+export enum ZtsErrorCode {
   /** No ZtsError */
   ZTS_ERR_OK = 0,
   /** Socket ZtsError, see `zts_errno` */
@@ -117,7 +14,7 @@ export enum errors {
 }
 
 /** Definitions for error constants. */
-export enum SocketErrors {
+export enum SocketErrorCode {
   /** No error, everything OK. */
   ERR_OK = 0,
   /** Out of memory error.     */
@@ -154,7 +51,7 @@ export enum SocketErrors {
   ERR_ARG = -16,
 }
 
-export enum events {
+export enum ZtsNodeEvent {
   /**
    * Node has been initialized
    *
@@ -382,5 +279,3 @@ export enum errnos {
   /** Operation now in progress */
   ZTS_EINPROGRESS = 115,
 }
-
-export * as defs from "./defs";

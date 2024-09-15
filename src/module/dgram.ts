@@ -1,6 +1,7 @@
 import { EventEmitter } from "events";
-import { InternalError, zts } from "./zts";
+
 import { isIPv6 } from "net";
+import { InternalError, UDP } from "../native";
 
 interface UDPSocketEvents {
   close: () => void;
@@ -28,7 +29,7 @@ class Socket extends EventEmitter {
     super();
     this.ipv6 = ipv6;
 
-    this.internal = new zts.UDP(ipv6, (data, addr, port) => {
+    this.internal = new UDP(ipv6, (data, addr, port) => {
       this.emit("message", data, {
         address: addr,
         family: isIPv6(addr) ? "udp6" : "udp4",

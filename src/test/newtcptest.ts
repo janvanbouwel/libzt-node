@@ -1,6 +1,6 @@
 import { setTimeout } from "timers/promises";
 
-import { net, SocketErrors, events, node } from "../index";
+import { net, SocketErrorCode, ZtsNodeEvent, node } from "../index";
 import { createReadStream, createWriteStream, existsSync } from "fs";
 import { Duplex, Transform, PassThrough } from "stream";
 
@@ -94,7 +94,7 @@ example usage: server-client pair on adhoc network, server sends "./send" and cl
     path,
     eventListener: (event) => {
       console.log(
-        `       e: ${event}, ${events[event]
+        `       e: ${event}, ${ZtsNodeEvent[event]
           .replace("ZTS_EVENT_", "")
           .toLowerCase()}`,
       );
@@ -121,7 +121,7 @@ example usage: server-client pair on adhoc network, server sends "./send" and cl
       socket.on("error", (error) => {
         console.log(error);
         if ("code" in error) {
-          console.log(`code means: ${SocketErrors[error.code as number]}`);
+          console.log(`code means: ${SocketErrorCode[error.code as number]}`);
         }
       });
 
@@ -143,7 +143,7 @@ example usage: server-client pair on adhoc network, server sends "./send" and cl
     socket.on("error", (error) => {
       console.log(error);
       if ("code" in error) {
-        console.log(`code means: ${SocketErrors[error.code as number]}`);
+        console.log(`code means: ${SocketErrorCode[error.code as number]}`);
       }
     });
   }

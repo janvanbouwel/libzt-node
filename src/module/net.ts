@@ -2,11 +2,10 @@ import { EventEmitter } from "node:events";
 import {
   AddrInfo,
   InternalError,
-  InternalServer,
-  InternalSocket,
-  SocketErrors,
-  zts,
-} from "./zts";
+  Server as InternalServer,
+  Socket as InternalSocket,
+  SocketErrorCode,
+} from "../native";
 import { Duplex, DuplexOptions, PassThrough } from "node:stream";
 
 import * as node_net from "node:net";
@@ -61,7 +60,7 @@ export class Server extends EventEmitter implements node_net.Server {
 
   private async internalListen(port: number, host: string): Promise<void> {
     try {
-      this.internalServer = await zts.Server.createServer(
+      this.internalServer = await InternalServer.createServer(
         port,
         host,
         this.internalConnectionHandler.bind(this),
@@ -70,7 +69,7 @@ export class Server extends EventEmitter implements node_net.Server {
       this.emit("listening");
     } catch (error: unknown) {
       // TODO translate to nodejs error, for example
-      //  reason.code === SocketErrors.ERR_USE -> reason.code = "EADDRINUSE"
+      //  reason.code === SocketErrorCodes.ERR_USE -> reason.code = "EADDRINUSE"
       this.handleError(error);
     }
   }
@@ -217,7 +216,7 @@ class Socket extends Duplex /*implements node_net.Socket*/ {
 
     if (internal) this.connected = true;
     if (addrInfo) this.setAddrInfo(addrInfo);
-    this.internalSocket = internal ?? new zts.Socket();
+    this.internalSocket = internal ?? new InternalSocket();
 
     // events from native socket
     this.internalEvents.on("connect", (addrInfo: AddrInfo) => {
@@ -340,7 +339,7 @@ class Socket extends Duplex /*implements node_net.Socket*/ {
 
   private _connect(port: number, address: string, attempts: number) {
     this.internalEvents.once("connect_error", async (err: number) => {
-      if (err === SocketErrors.ERR_RTE && attempts > 0) {
+      if (err === SocketErrorCode.ERR_RTE && attempts > 0) {
         await setTimeout(250);
         this._connect(port, address, attempts - 1);
       } else {
